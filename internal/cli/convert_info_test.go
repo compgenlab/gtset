@@ -21,13 +21,16 @@ const infoVCF = `##fileformat=VCFv4.2
 ##INFO=<ID=AC,Number=A,Type=Integer,Description="Panel allele count">
 ##INFO=<ID=PL,Number=G,Type=Integer,Description="Phred likelihoods">
 ##INFO=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
+##INFO=<ID=IMPUTED,Number=.,Type=String,Description="Imputation sources">
+##INFO=<ID=XS,Number=.,Type=Float,Description="Variable-length scores">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##FORMAT=<ID=XF,Number=.,Type=Integer,Description="Variable-length per-sample values">
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S1	S2	S3
 chr22	1000	.	G	A	50	PASS	R2=0.98;AF=0.31;AC=2	GT:DP	0/1:30	0/0:30	0/1:30
 chr22	2000	.	C	T	50	PASS	R2=0.42;IMP;AF=0.02;AC=1	GT:DP	0/1:30	0/0:30	0/0:30
 chr22	3000	.	A	G	50	PASS	IMP;AF=0.005;AC=0	GT:DP	0/0:30	0/0:30	0/0:30
-chr22	4000	.	T	C,G	50	PASS	R2=0.0;IMP;AF=0.11,0.07;AC=1,2	GT:DP	0/1:30	0/2:30	0/2:30
+chr22	4000	.	T	C,G	50	PASS	R2=0.0;IMP;AF=0.11,0.07;AC=1,2;IMPUTED=beagle,panel5;XS=0.91,0.88	GT:DP:XF	0/1:30:3,1,4	0/2:30:5	0/2:30:.
 `
 
 func infoHeader(t *testing.T) *vcf.VcfHeader {
@@ -224,4 +227,109 @@ func readRecord(t *testing.T, n int) *vcf.VcfRecord {
 	}
 	t.Fatal("unreachable")
 	return nil
+}
+
+// Number=. is captured whole, as text, whatever its declared Type: XS is a Float
+// in the header, but "0.91,0.88" fits no numeric column. Both rows of the
+// multiallelic record get the full value -- nothing says which value belongs to
+// which allele, so splitting it would invent that.
+func TestCaptureInfoKeepsNumberDotWhole(t *testing.T) {
+	h := infoHeader(t)
+	fields, _, err := resolveInfoFields(h, []string{"IMPUTED,XS"})
+	if err != nil {
+		t.Fatalf("a Number=. field was refused: %v", err)
+	}
+	for _, f := range fields {
+		if f.Type != varstore.InfoString || f.Number != "." {
+			t.Errorf("%s resolved to %s/%s, want String/.", f.Name, f.Type, f.Number)
+		}
+	}
+	rec := readRecord(t, 4) // chr22:4000 T>C,G
+	buf := map[string]any{}
+	for alt := 0; alt < 2; alt++ {
+		captureInfo(buf, rec, fields, alt)
+		if buf["IMPUTED"] != "beagle,panel5" || buf["XS"] != "0.91,0.88" {
+			t.Errorf("ALT %d got IMPUTED=%v XS=%v, want the full values", alt, buf["IMPUTED"], buf["XS"])
+		}
+	}
+	captureInfo(buf, readRecord(t, 1), fields, 0)
+	if len(buf) != 0 {
+		t.Errorf("a record without the fields captured %v", buf)
+	}
+}
+
+// End to end: the store holds the verbatim text on every split row, and the
+// manifest says the column is text from a Number=. field.
+func TestConvertCapturesNumberDotInfo(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "in.vcf")
+	if err := os.WriteFile(p, []byte(infoVCF), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	base := convert(t, p, "--info", "IMPUTED,XS")
+	s, err := varstore.OpenParquet(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, f := range s.InfoFields() {
+		if f.Type != varstore.InfoString || f.Number != "." {
+			t.Errorf("manifest records %+v, want String/.", f)
+		}
+	}
+	rows := 0
+	if err := s.SitesInfo(func(site varstore.Site, info varstore.InfoRow) bool {
+		xs, ok := info.String("info_xs")
+		if site.Pos == 4000 {
+			rows++
+			if xs != "0.91,0.88" {
+				t.Errorf("chr22:4000 %s info_xs = %q", site.Alt, xs)
+			}
+		} else if ok {
+			t.Errorf("chr22:%d carried no XS but reads %q", site.Pos, xs)
+		}
+		return true
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 2 {
+		t.Errorf("read %d rows at chr22:4000, want one per ALT", rows)
+	}
+}
+
+// FORMAT follows the same rule: XF is an Integer in the header, but a call row
+// keeps the sample's whole value as text, and "." stays absent.
+func TestConvertCapturesNumberDotFormat(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "in.vcf")
+	if err := os.WriteFile(p, []byte(infoVCF), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	base := convert(t, p, "--format", "XF")
+	s, err := varstore.OpenParquet(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, f := range s.FormatFields() {
+		if f.Type != varstore.InfoString || f.Number != "." {
+			t.Errorf("manifest records %+v, want String/.", f)
+		}
+	}
+	got := map[string]string{}
+	if err := s.CallsFormat(func(c varstore.Call, f varstore.FormatRow) bool {
+		if v, ok := f.String("fmt_xf"); ok {
+			got[c.SampleID+":"+c.Alt] = v
+		}
+		return true
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"S1:C": "3,1,4", "S2:G": "5"}
+	if len(got) != len(want) {
+		t.Errorf("captured %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s fmt_xf = %q, want %q", k, got[k], v)
+		}
+	}
 }
