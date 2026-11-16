@@ -282,10 +282,15 @@ simply dropped at conversion.
 
 Types and cardinality are read from the ##INFO header lines, never from the
 command line: the file already declares them, so restating them would only be a
-way to get them wrong. Only Number=1 (one value per site), Number=A (one per
-ALT) and Flag can be captured -- a site row is one ALT, so Number=R and Number=G
-have values with nowhere to go. Naming such a field is an error; one that merely
-matched a glob is skipped with a note.
+way to get them wrong. Number=1 (one value per site), Number=A (one per ALT),
+Number=. and Flag can be captured -- a site row is one ALT, so Number=R and
+Number=G have values with nowhere to go. Naming such a field is an error; one
+that merely matched a glob is skipped with a note.
+
+A Number=. field is stored as the record's full value, verbatim, as text --
+whatever its declared Type, since "0.91,0.88" fits no numeric column -- and is
+repeated on each ALT's row rather than split, because nothing says which value
+belongs to which allele.
 
 Values are stored per ALT where the field is Number=A, so a multiallelic record
 that splits into three site rows gives each row its own value rather than
@@ -384,12 +389,12 @@ the order the flags were typed. varstore summary prints all of it, and
 		// caller looking for a column that was never written.
 		if len(formatSkipped) > 0 {
 			fmt.Fprintf(cmd.ErrOrStderr(),
-				"note: not capturing %s -- only Number=1 and Number=A fit a call row\n",
+				"note: not capturing %s -- only Number=1, A and . fit a call row\n",
 				strings.Join(formatSkipped, ", "))
 		}
 		if len(infoSkipped) > 0 {
 			fmt.Fprintf(cmd.ErrOrStderr(),
-				"note: not capturing %s -- only Number=1 and Number=A fit a site row\n",
+				"note: not capturing %s -- only Number=1, A and . fit a site row\n",
 				strings.Join(infoSkipped, ", "))
 		}
 		if len(samples) == 0 {

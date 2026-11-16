@@ -58,12 +58,8 @@ func resolveFormatFields(h *vcf.VcfHeader, selectors []string) ([]varstore.Forma
 						"--format %s: the header declares no ##FORMAT field by that name%s",
 						id, nearestFormat(h, id))
 				}
-				f := varstore.FormatField{
-					Name:   id,
-					Column: varstore.FormatColumn(id),
-					Type:   varstore.InfoType(def.Type),
-					Number: def.Number,
-				}
+				// FormatFieldFor stores a Number=. field as its verbatim text.
+				f := varstore.FormatFieldFor(id, def.Type, def.Number)
 				if err := varstore.ValidateFormat([]varstore.FormatField{f}); err != nil {
 					// Naming a field is a request; matching one is a side
 					// effect. Without the distinction `--format '*'` could never
