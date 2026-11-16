@@ -63,12 +63,8 @@ func resolveInfoFields(h *vcf.VcfHeader, selectors []string) ([]varstore.InfoFie
 						"--info %s: the header declares no ##INFO field by that name%s",
 						id, nearestInfo(h, id))
 				}
-				f := varstore.InfoField{
-					Name:   id,
-					Column: varstore.InfoColumn(id),
-					Type:   varstore.InfoType(def.Type),
-					Number: def.Number,
-				}
+				// InfoFieldFor stores a Number=. field as its verbatim text.
+				f := varstore.InfoFieldFor(id, def.Type, def.Number)
 				// NAMING A FIELD IS A REQUEST; MATCHING ONE IS A SIDE EFFECT.
 				// An explicit --info AD that cannot be stored must fail, or the
 				// run quietly produces a store missing the column it was for.
