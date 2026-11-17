@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/compgenlab/cghts/gtstore"
+	"github.com/compgenlab/cghts/htsio/tabix"
 	// Registers the s3 sink, so --out may name a bucket. A blank import:
 	// nothing here calls it, and without it s3:// is refused as an unknown
 	// scheme rather than written.
@@ -615,6 +617,10 @@ func convertOne(cmd *cobra.Command, conv *parquetConverter, path string, canonic
 	}
 	conv.perm = perm
 	conv.header = src.header
+	conv.recCounts = nil
+	if conv.verbose && vcfRegion == "" {
+		conv.recCounts = indexRecordCounts(cmd.Context(), path)
+	}
 
 	if conv.verbose {
 		note := ""
@@ -632,6 +638,10 @@ func convertOne(cmd *cobra.Command, conv *parquetConverter, path string, canonic
 		if err != nil {
 			return err
 		}
+		if rec.Chrom != conv.lineChrom {
+			conv.lineChrom, conv.chromLines = rec.Chrom, 0
+		}
+		conv.chromLines++
 		if vcfPassing && rec.IsFiltered() {
 			conv.nFiltered++
 			continue
@@ -716,16 +726,27 @@ type parquetConverter struct {
 	lastTick       time.Time
 	lastRecords    int64
 	lastTickPos    int
-	nFiltered      int64
-	nMultiAllelic  int64
-	nExtraRows     int64
-	nBlockAlts     int64
-	sawGQ          int64
-	sawAD          int64
-	nGenotypes     int64
-	nBelowDP       int64
-	nNoCall        int64
-	chroms         []string
+
+	// Record counts from the input's tabix index (htslib's per-reference
+	// pseudo-bin), keyed by CanonKey; nil when there is no index, it records
+	// no counts, or --region restricts the input. chromTotal is the current
+	// chromosome's count (0 = unknown) and chromLines how many of its lines
+	// have been read, filtered ones included, since the index counts those.
+	recCounts     map[string]uint64
+	lineChrom     string
+	chromLines    int64
+	chromTotal    int64
+	lastTickLines int64
+	nFiltered     int64
+	nMultiAllelic int64
+	nExtraRows    int64
+	nBlockAlts    int64
+	sawGQ         int64
+	sawAD         int64
+	nGenotypes    int64
+	nBelowDP      int64
+	nNoCall       int64
+	chroms        []string
 }
 
 // Progress is reported on a clock, not a record count: a 30,000-sample record
@@ -767,18 +788,28 @@ func (c *parquetConverter) note(chrom string, pos int) {
 			c.contigLen = d.Length
 		}
 	}
+	c.chromTotal = 0
+	if n, ok := c.recCounts[gtstore.CanonKey(chrom)]; ok && n > 0 {
+		c.chromTotal = int64(n)
+	}
 	now := c.clock()
 	if c.started.IsZero() {
 		c.started = now
 	}
+	// chromLines already counts this chromosome's first line (and any filtered
+	// ones before it), so the start of the estimate is one line back.
 	c.chromStartPos, c.chromStartTime = pos, now
-	c.lastTick, c.lastRecords, c.lastTickPos = now, c.nRecords, pos
+	c.lastTick, c.lastRecords, c.lastTickPos, c.lastTickLines = now, c.nRecords, pos, c.chromLines
 	if c.verbose {
+		var b strings.Builder
+		fmt.Fprintf(&b, "  %s: starting at %s", chrom, comma(int64(pos)))
 		if c.contigLen > 0 {
-			fmt.Fprintf(c.progress, "  %s: starting at %s of %s\n", chrom, comma(int64(pos)), comma(c.contigLen))
-		} else {
-			fmt.Fprintf(c.progress, "  %s: starting at %s\n", chrom, comma(int64(pos)))
+			fmt.Fprintf(&b, " of %s", comma(c.contigLen))
 		}
+		if c.chromTotal > 0 {
+			fmt.Fprintf(&b, " (%s records in the index)", comma(c.chromTotal))
+		}
+		fmt.Fprintln(c.progress, b.String())
 		flushProgress(c.progress)
 	}
 }
@@ -798,42 +829,105 @@ func (c *parquetConverter) tick(pos int) {
 	if now.Sub(c.lastTick) < progressEvery {
 		return
 	}
-	moved := c.nRecords-c.lastRecords >= progressMinRecords
-	if c.contigLen > 0 && float64(pos-c.lastTickPos) >= progressMinFrac*float64(c.contigLen) {
-		moved = true
+	var moved bool
+	if c.countKnown() {
+		// With the index's count, "moved" means a share of the work done, not
+		// of the bases covered -- exome records cluster in genes.
+		moved = float64(c.chromLines-c.lastTickLines) >= progressMinFrac*float64(c.chromTotal)
+	} else {
+		moved = c.nRecords-c.lastRecords >= progressMinRecords
+		if c.contigLen > 0 && float64(pos-c.lastTickPos) >= progressMinFrac*float64(c.contigLen) {
+			moved = true
+		}
 	}
 	if !moved {
 		return
 	}
-	c.lastTick, c.lastRecords, c.lastTickPos = now, c.nRecords, pos
+	c.lastTick, c.lastRecords, c.lastTickPos, c.lastTickLines = now, c.nRecords, pos, c.chromLines
 	fmt.Fprintln(c.progress, c.progressLine(pos, now))
 	flushProgress(c.progress)
 }
 
-// progressLine is one progress report, e.g.
+// countKnown reports whether the index's record count for this chromosome can
+// be trusted for the percentage. A count the input has already outrun means a
+// stale index, and a percentage past 100 would be worse than none.
+func (c *parquetConverter) countKnown() bool {
+	return c.chromTotal > 0 && c.chromLines <= c.chromTotal
+}
+
+// progressLine is one progress report. With the input's tabix index recording
+// how many records the chromosome holds, the percentage and estimate count
+// records, which is the work:
 //
-//	chr2:121,450,332 / 242,193,529 (50.1%)  records 61,204 (34/s)  genotypes 1.84e+09 (1.0M/s)  calls 2,310,442  elapsed 30m0s  eta ~30m
+//	chr2:121,450,332  record 61,204 of 122,310 (50.0%)  34/s  genotypes 1.84G (1.0M/s)  calls 2,310,442  elapsed 30m0s  eta ~30m
+//
+// Without one they fall back to the position against the ##contig length:
+//
+//	chr2:121,450,332 / 242,193,529 (50.1%)  records 61,204 (34/s)  genotypes 1.84G (1.0M/s)  calls 2,310,442  elapsed 30m0s  eta ~30m
 func (c *parquetConverter) progressLine(pos int, now time.Time) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "  %s:%s", c.curChrom, comma(int64(pos)))
-	if c.contigLen > 0 {
-		fmt.Fprintf(&b, " / %s (%.1f%%)", comma(c.contigLen), 100*float64(pos)/float64(c.contigLen))
-	}
 	elapsed := now.Sub(c.started)
 	secs := elapsed.Seconds()
-	fmt.Fprintf(&b, "  records %s (%s/s)  genotypes %s (%s/s)  calls %s  elapsed %s",
-		comma(c.nRecords), rate(float64(c.nRecords), secs),
+	spent := now.Sub(c.chromStartTime)
+	var left time.Duration
+	haveETA := false
+
+	fmt.Fprintf(&b, "  %s:%s", c.curChrom, comma(int64(pos)))
+	if c.countKnown() {
+		fmt.Fprintf(&b, "  record %s of %s (%.1f%%)  %s/s", comma(c.chromLines), comma(c.chromTotal),
+			100*float64(c.chromLines)/float64(c.chromTotal), rate(float64(c.nRecords), secs))
+		// From this chromosome's own rate: its first line was read at
+		// chromStartTime, so lines past it measure the pace.
+		if done := c.chromLines - 1; done > 0 {
+			left = time.Duration(float64(spent) * float64(c.chromTotal-c.chromLines) / float64(done))
+			haveETA = true
+		}
+	} else {
+		if c.contigLen > 0 {
+			fmt.Fprintf(&b, " / %s (%.1f%%)", comma(c.contigLen), 100*float64(pos)/float64(c.contigLen))
+		}
+		fmt.Fprintf(&b, "  records %s (%s/s)", comma(c.nRecords), rate(float64(c.nRecords), secs))
+		// The estimate covers this chromosome only, from how far it has come
+		// since it started: an input holding several chromosomes cannot be
+		// estimated as a whole without knowing which ones are still to come.
+		if done := pos - c.chromStartPos; c.contigLen > 0 && done > 0 && int64(pos) < c.contigLen {
+			left = time.Duration(float64(spent) * float64(c.contigLen-int64(pos)) / float64(done))
+			haveETA = true
+		}
+	}
+	fmt.Fprintf(&b, "  genotypes %s (%s/s)  calls %s  elapsed %s",
 		siCount(float64(c.nGenotypes)), rate(float64(c.nGenotypes), secs),
 		comma(c.w.NCalls), elapsed.Round(time.Second))
-	// The estimate covers this chromosome only, from how far it has come since
-	// it started: an input holding several chromosomes cannot be estimated as a
-	// whole without knowing which ones are still to come.
-	if done := pos - c.chromStartPos; c.contigLen > 0 && done > 0 && int64(pos) < c.contigLen {
-		spent := now.Sub(c.chromStartTime)
-		left := time.Duration(float64(spent) * float64(c.contigLen-int64(pos)) / float64(done))
+	if haveETA {
 		fmt.Fprintf(&b, "  eta ~%s", roughDuration(left))
 	}
 	return b.String()
+}
+
+// indexRecordCounts returns how many records each chromosome holds according
+// to the input's tabix index, keyed by CanonKey, or nil when there is no index
+// or it records no counts (htslib's indexes do; cghts's did not before
+// v0.12.9). Only progress reporting uses it, so any failure is silence, never
+// an error: a conversion must not fail over an estimate.
+func indexRecordCounts(ctx context.Context, path string) map[string]uint64 {
+	if path == "-" {
+		return nil
+	}
+	tr, err := tabix.Open(ctx, path)
+	if err != nil {
+		return nil
+	}
+	defer tr.Close()
+	var out map[string]uint64
+	for _, ref := range tr.RefNames() {
+		if n, ok := tr.RecordCount(ref); ok {
+			if out == nil {
+				out = map[string]uint64{}
+			}
+			out[gtstore.CanonKey(ref)] = n
+		}
+	}
+	return out
 }
 
 // flushProgress pushes a progress line out now. os.Stderr is unbuffered, but a
