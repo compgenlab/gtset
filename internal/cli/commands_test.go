@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/compgenlab/varstore/internal/cmdtest"
+	"github.com/compgenlab/gtstore/internal/cmdtest"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +29,7 @@ func runVcfErr(t *testing.T, args ...string) error {
 
 // vcfTestRoot builds a fresh root with all command flags reset to defaults.
 func vcfTestRoot(args ...string) (*cobra.Command, *bytes.Buffer) {
-	root := &cobra.Command{Use: "varstore"}
+	root := &cobra.Command{Use: "gtstore"}
 	InitCmd(root)
 	// Slice flags need Replace rather than Set(DefValue); see cmdtest.ResetFlags.
 	// That mattered here beyond tidiness: an extra bogus --sample is a harmless
@@ -38,7 +38,7 @@ func vcfTestRoot(args ...string) (*cobra.Command, *bytes.Buffer) {
 	cmdtest.ResetFlags(root)
 	vcfVarQuerySamples = nil
 	vcfVarQueryVariants = nil
-	vcfToVarstoreForce = false
+	vcfToGtstoreForce = false
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)

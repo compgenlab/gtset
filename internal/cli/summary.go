@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 	"github.com/spf13/cobra"
 	"io"
 )
@@ -29,7 +29,7 @@ var summaryCmd = &cobra.Command{
 	Long: `Report what a variant source contains, without querying genotypes.
 
 The input may be a VCF (plain or bgzipped) or a Parquet store written by
-varstore convert, local or remote. The backend is inferred from the path; override
+gtstore convert, local or remote. The backend is inferred from the path; override
 with --store.
 
 The default report never reads a single record. It is O(header) on both
@@ -80,7 +80,7 @@ estimated from it -- they are reported as requiring --counts.
 		}
 
 		ctx := cmd.Context()
-		store, err := openVarStore(ctx, args[0], vcfVarSummaryStore)
+		store, err := openGTStore(ctx, args[0], vcfVarSummaryStore)
 		if err != nil {
 			// A store that cannot be opened is exactly what this command is for.
 			// Since a missing manifest has no escape hatch, refusing with only
@@ -112,7 +112,7 @@ estimated from it -- they are reported as requiring --counts.
 	},
 }
 
-func writeSummary(cmd *cobra.Command, out *bufio.Writer, store varstore.Store, path string) error {
+func writeSummary(cmd *cobra.Command, out *bufio.Writer, store gtstore.Store, path string) error {
 	ctx := cmd.Context()
 	errOut := cmd.ErrOrStderr()
 
@@ -132,13 +132,13 @@ func writeSummary(cmd *cobra.Command, out *bufio.Writer, store varstore.Store, p
 		return nil
 	}
 	if vcfVarSummarySites {
-		if _, isVcf := store.(*varstore.VcfStore); isVcf && vcfVerbose {
+		if _, isVcf := store.(*gtstore.VcfStore); isVcf && vcfVerbose {
 			fmt.Fprintln(errOut, "note: a VCF has no catalog to read, so --sites is a full pass over the file")
 		}
 		fmt.Fprintln(out, strings.Join([]string{
 			"chrom", "pos", "ref", "alt", "ac", "an", "n_carriers", "n_called", "n_lowdp",
 		}, "\t"))
-		return store.Sites(func(s varstore.Site) bool {
+		return store.Sites(func(s gtstore.Site) bool {
 			fmt.Fprintf(out, "%s\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n",
 				s.Chrom, s.Pos, s.Ref, s.Alt, s.AC, s.AN, s.NCarriers, s.NCalled, s.NLowDP)
 			return true
@@ -146,11 +146,11 @@ func writeSummary(cmd *cobra.Command, out *bufio.Writer, store varstore.Store, p
 	}
 
 	switch s := store.(type) {
-	case *varstore.ParquetVolume:
+	case *gtstore.ParquetVolume:
 		return summarizeStore(out, errOut, s, path, samples)
-	case *varstore.VcfStore:
+	case *gtstore.VcfStore:
 		return summarizeVcf(ctx, out, errOut, s, path, samples)
-	case *varstore.VarStore:
+	case *gtstore.GTStore:
 		return summarizeMultiVolume(out, s, path)
 	}
 	return fmt.Errorf("unknown backend %T", store)
@@ -163,10 +163,10 @@ func writeSummary(cmd *cobra.Command, out *bufio.Writer, store varstore.Store, p
 // so reporting one is deliberately NOT the same as reporting each -- printing
 // twenty-five near-identical blocks would bury the one thing a reader wants,
 // which is whether the archive is coherent and what it covers.
-func summarizeMultiVolume(out io.Writer, s *varstore.VarStore, path string) error {
+func summarizeMultiVolume(out io.Writer, s *gtstore.GTStore, path string) error {
 	man := s.StoreManifest()
 	fmt.Fprintf(out, "\n%s\n", path)
-	fmt.Fprintf(out, "  a varstore of %d volumes over %d samples\n\n", len(man.Volumes), len(man.Samples))
+	fmt.Fprintf(out, "  a gtstore of %d volumes over %d samples\n\n", len(man.Volumes), len(man.Samples))
 
 	var sites, calls int64
 	fmt.Fprintf(out, "  %-24s %-24s %12s %12s\n", "VOLUME", "CHROMOSOMES", "SITES", "CALLS")
@@ -226,7 +226,7 @@ func writeStoreMeta(out *bufio.Writer, meta map[string]string) {
 	}
 	seen := map[string]bool{}
 	var keys []string
-	for _, k := range varstore.ReservedMetaKeys {
+	for _, k := range gtstore.ReservedMetaKeys {
 		if _, ok := meta[k]; ok {
 			keys = append(keys, k)
 			seen[k] = true
@@ -254,11 +254,11 @@ func writeStoreMeta(out *bufio.Writer, meta map[string]string) {
 }
 
 func summarizeStore(out *bufio.Writer, errOut interface{ Write([]byte) (int, error) },
-	s *varstore.ParquetVolume, path string, samples []string) error {
+	s *gtstore.ParquetVolume, path string, samples []string) error {
 	m := s.VolumeManifest()
 	p := s.Provenance()
 
-	fmt.Fprintf(out, "source     varstore volume %s\n", path)
+	fmt.Fprintf(out, "source     gtstore volume %s\n", path)
 	fmt.Fprintf(out, "samples    %d\n", len(samples))
 	fmt.Fprintf(out, "created    %s\n", m.Created.Format("2006-01-02 15:04:05 MST"))
 	if m.Program != "" {
@@ -295,7 +295,7 @@ func summarizeStore(out *bufio.Writer, errOut interface{ Write([]byte) (int, err
 
 	fmt.Fprintf(out, "\nmembers\n")
 	for _, name := range []string{
-		varstore.CallsTable, varstore.CatalogTable, varstore.CatalogRunsTable, varstore.RefBlocksTable,
+		gtstore.CallsTable, gtstore.CatalogTable, gtstore.CatalogRunsTable, gtstore.RefBlocksTable,
 	} {
 		info, ok := m.Tables[name]
 		if !ok {
@@ -335,7 +335,7 @@ func summarizeStore(out *bufio.Writer, errOut interface{ Write([]byte) (int, err
 }
 
 func summarizeVcf(ctx context.Context, out *bufio.Writer, errOut interface{ Write([]byte) (int, error) },
-	s *varstore.VcfStore, path string, samples []string) error {
+	s *gtstore.VcfStore, path string, samples []string) error {
 	fmt.Fprintf(out, "source     vcf %s\n", path)
 	fmt.Fprintf(out, "samples    %d\n", len(samples))
 	if s.Indexed() {
@@ -363,7 +363,7 @@ func summarizeVcf(ctx context.Context, out *bufio.Writer, errOut interface{ Writ
 	var order []*chromCount
 	idx := map[string]*chromCount{}
 	var total int64
-	if err := s.Sites(func(site varstore.Site) bool {
+	if err := s.Sites(func(site gtstore.Site) bool {
 		total++
 		c, ok := idx[site.Chrom]
 		if !ok {
@@ -395,15 +395,15 @@ func summarizeVcf(ctx context.Context, out *bufio.Writer, errOut interface{ Writ
 
 // writeSummaryJSON emits a store's manifest verbatim, so that gzipping it costs
 // nothing in scriptability: "| jq" is one pipe away rather than zero.
-func writeSummaryJSON(out *bufio.Writer, store varstore.Store, path string) error {
+func writeSummaryJSON(out *bufio.Writer, store gtstore.Store, path string) error {
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	switch s := store.(type) {
-	case *varstore.ParquetVolume:
+	case *gtstore.ParquetVolume:
 		return enc.Encode(s.VolumeManifest())
-	case *varstore.VarStore:
+	case *gtstore.GTStore:
 		return enc.Encode(s.StoreManifest())
-	case *varstore.VcfStore:
+	case *gtstore.VcfStore:
 		samples, err := s.Samples()
 		if err != nil {
 			return err
@@ -435,16 +435,16 @@ func init() {
 // It reads only footers -- row counts are footer metadata, not a scan -- and
 // deliberately does not answer any genotype question. Diagnosis is not access.
 func describeUnreadableStore(ctx context.Context, path string, openErr error) (string, bool) {
-	base := varstore.TrimStoreSuffix(path)
+	base := gtstore.TrimStoreSuffix(path)
 	var b strings.Builder
 	fmt.Fprintf(&b, "\nthis store could not be opened; what is present:\n")
 
 	any := false
 	for _, name := range []string{
-		varstore.CallsTable, varstore.CatalogTable, varstore.CatalogRunsTable,
+		gtstore.CallsTable, gtstore.CatalogTable, gtstore.CatalogRunsTable,
 	} {
-		p := varstore.TablePath(base, name)
-		rows, size, err := varstore.TableShape(ctx, p)
+		p := gtstore.TablePath(base, name)
+		rows, size, err := gtstore.TableShape(ctx, p)
 		switch {
 		case err != nil:
 			fmt.Fprintf(&b, "  %-12s absent\n", name)
@@ -458,8 +458,8 @@ func describeUnreadableStore(ctx context.Context, path string, openErr error) (s
 			fmt.Fprintf(&b, "  %-12s %12d rows  %14d bytes\n", name, rows, size)
 		}
 	}
-	if _, err := varstore.ReadVolumeManifestContext(ctx, base); err != nil {
-		fmt.Fprintf(&b, "  %-12s missing\n", varstore.VolumeManifestName)
+	if _, err := gtstore.ReadVolumeManifestContext(ctx, base); err != nil {
+		fmt.Fprintf(&b, "  %-12s missing\n", gtstore.VolumeManifestName)
 	}
 	if !any {
 		return "", false
@@ -467,7 +467,7 @@ func describeUnreadableStore(ctx context.Context, path string, openErr error) (s
 	fmt.Fprintf(&b, "\na table with a row count was finalized; one marked NEVER FINALIZED is\n")
 	fmt.Fprintf(&b, "where the conversion stopped. Either way a finished table says nothing\n")
 	fmt.Fprintf(&b, "about how much of the input went into it -- that is what the manifest\n")
-	fmt.Fprintf(&b, "records, and why it is required. Re-convert with varstore convert --force.\n\n")
+	fmt.Fprintf(&b, "records, and why it is required. Re-convert with gtstore convert --force.\n\n")
 	return b.String(), true
 }
 
@@ -503,7 +503,7 @@ func refBlockCoverage(attached []string, known bool, roster []string) string {
 // writeArchiveRefBlockSamples states the attached samples once when the volumes
 // agree, and per volume when they do not. Volumes disagree after a replace that
 // died partway; averaging that away would hide exactly the state worth seeing.
-func writeArchiveRefBlockSamples(out io.Writer, s *varstore.VarStore, man *varstore.StoreManifest) {
+func writeArchiveRefBlockSamples(out io.Writer, s *gtstore.GTStore, man *gtstore.StoreManifest) {
 	if attached, ok := s.RefBlockSamples(); ok {
 		fmt.Fprintf(out, "                %s\n", refBlockCoverage(attached, true, man.Samples))
 		return

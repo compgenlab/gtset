@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 )
 
 // Tests for --hom-ref, which adds reference calls to either query mode.
@@ -104,7 +104,7 @@ func TestHomRefSampleModeBackendsAgree(t *testing.T) {
 // contained. S3 is the only genuinely all-reference sample.
 func TestHomRefIsStricterThanNonCarrier(t *testing.T) {
 	base := convert(t, "testdata/multiallelic.vcf")
-	locus := varstore.Locus{Chrom: "chr1", Pos: 200, Ref: "C", Alt: "G"}
+	locus := gtstore.Locus{Chrom: "chr1", Pos: 200, Ref: "C", Alt: "G"}
 
 	for _, in := range []string{"testdata/multiallelic.vcf", base} {
 		homRef := homRefSamples(t, runVcf(t, "query",
@@ -117,17 +117,17 @@ func TestHomRefIsStricterThanNonCarrier(t *testing.T) {
 
 		// Classify still calls S2 a non-carrier, so hom-ref really is the stricter
 		// question rather than a redefinition of non_carrier.
-		store, err := openVarStore(context.Background(), in, "")
+		store, err := openGTStore(context.Background(), in, "")
 		if err != nil {
 			t.Fatal(err)
 		}
-		states, err := store.Classify(locus, varstore.Gate{})
+		states, err := store.Classify(locus, gtstore.Gate{})
 		store.Close()
 		if err != nil {
 			t.Fatalf("%s: Classify: %v", in, err)
 		}
 		for _, st := range states {
-			if st.SampleID == "S2" && st.State != varstore.StateNonCarrier {
+			if st.SampleID == "S2" && st.State != gtstore.StateNonCarrier {
 				t.Errorf("%s: Classify says S2 is %s at chr1:200 C>G, want non_carrier",
 					in, st.State)
 			}
@@ -147,7 +147,7 @@ func TestHomRefSampleModeSkipsOtherAlternates(t *testing.T) {
 			if len(f) < numCols || f[colSample] != "S2" {
 				continue
 			}
-			if f[colPos] == "200" && f[colGT] == varstore.HomRefGT {
+			if f[colPos] == "200" && f[colGT] == gtstore.HomRefGT {
 				t.Errorf("%s: S2 reported as 0/0 at the multiallelic record it carries T at:\n%s",
 					in, row)
 			}
@@ -169,7 +169,7 @@ func TestHomRefUnionKeepsCarriers(t *testing.T) {
 
 	// Without the flag, only the carried variant appears.
 	plain := dataRowsOnly(runVcf(t, "query", "--sample", "S1", "--min-dp", "10", base))
-	if strings.Contains(plain, varstore.HomRefGT) {
+	if strings.Contains(plain, gtstore.HomRefGT) {
 		t.Errorf("reference calls must not appear without --hom-ref:\n%s", plain)
 	}
 }
@@ -290,7 +290,7 @@ func TestHomRefStoreRowsCarryNoQuality(t *testing.T) {
 			continue
 		}
 		gt, dp, gq := f[colGT], f[colDP], f[colGQ]
-		if gt == varstore.HomRefGT && (dp != "." || gq != ".") {
+		if gt == gtstore.HomRefGT && (dp != "." || gq != ".") {
 			t.Errorf("a store cannot know a reference call's quality, got dp=%s gq=%s:\n%s",
 				dp, gq, row)
 		}
@@ -435,7 +435,7 @@ func homRefSamples(t *testing.T, out string) []string {
 		if len(f) < numCols || f[colChrom] == "chrom" {
 			continue
 		}
-		if f[colGT] == varstore.HomRefGT {
+		if f[colGT] == gtstore.HomRefGT {
 			got = append(got, f[colSample])
 		}
 	}

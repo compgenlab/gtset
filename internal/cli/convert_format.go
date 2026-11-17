@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 	"github.com/compgenlab/cghts/vcf"
 )
 
@@ -26,12 +26,12 @@ import (
 // Same rules as --info: types come from the file rather than the command line,
 // a glob may match nothing storable and skips it, and naming a field explicitly
 // that cannot be stored is an error rather than a silent omission.
-func resolveFormatFields(h *vcf.VcfHeader, selectors []string) ([]varstore.FormatField, []string, error) {
+func resolveFormatFields(h *vcf.VcfHeader, selectors []string) ([]gtstore.FormatField, []string, error) {
 	if len(selectors) == 0 {
 		return nil, nil, nil
 	}
 	seen := map[string]bool{}
-	var out []varstore.FormatField
+	var out []gtstore.FormatField
 	var skipped []string
 
 	for _, raw := range selectors {
@@ -59,8 +59,8 @@ func resolveFormatFields(h *vcf.VcfHeader, selectors []string) ([]varstore.Forma
 						id, nearestFormat(h, id))
 				}
 				// FormatFieldFor stores a Number=. field as its verbatim text.
-				f := varstore.FormatFieldFor(id, def.Type, def.Number)
-				if err := varstore.ValidateFormat([]varstore.FormatField{f}); err != nil {
+				f := gtstore.FormatFieldFor(id, def.Type, def.Number)
+				if err := gtstore.ValidateFormat([]gtstore.FormatField{f}); err != nil {
 					// Naming a field is a request; matching one is a side
 					// effect. Without the distinction `--format '*'` could never
 					// succeed, since every VCF declares GT and most declare PL.
@@ -96,7 +96,7 @@ func nearestFormat(h *vcf.VcfHeader, want string) string {
 // different claims.
 func captureFormat(
 	dst map[string]any, rec *vcf.VcfRecord, sampleIdx int,
-	fields []varstore.FormatField, altIdx int,
+	fields []gtstore.FormatField, altIdx int,
 ) {
 	clear(dst)
 	if len(fields) == 0 {
@@ -128,19 +128,19 @@ func captureFormat(
 			continue
 		}
 		switch f.Type {
-		case varstore.InfoInteger:
+		case gtstore.InfoInteger:
 			n, err := strconv.ParseInt(text, 10, 32)
 			if err != nil {
 				continue
 			}
 			dst[f.Name] = int32(n)
-		case varstore.InfoFloat:
+		case gtstore.InfoFloat:
 			x, err := strconv.ParseFloat(text, 64)
 			if err != nil {
 				continue
 			}
 			dst[f.Name] = x
-		case varstore.InfoString:
+		case gtstore.InfoString:
 			dst[f.Name] = text
 		}
 	}
