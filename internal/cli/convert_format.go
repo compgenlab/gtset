@@ -102,16 +102,16 @@ func captureFormat(
 	if len(fields) == 0 {
 		return
 	}
-	attrs, err := rec.Sample(sampleIdx)
-	if err != nil {
-		return
-	}
+	// Straight out of the record line rather than through rec.Sample, which
+	// would build a map of every FORMAT key for this sample. Same answers: a key
+	// the record does not declare is skipped, and one the sample dropped reads
+	// as "." and is skipped below.
 	for _, f := range fields {
-		v, ok := attrs.Get(f.Name)
-		if !ok {
+		k := rec.FormatIndex(f.Name)
+		if k < 0 {
 			continue
 		}
-		text := v.String()
+		text := rec.SampleField(sampleIdx, k)
 		if text == "" || text == "." {
 			continue
 		}
