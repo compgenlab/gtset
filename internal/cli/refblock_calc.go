@@ -19,7 +19,6 @@ var (
 	vcfRefBlocksMinDP       int
 	vcfRefBlocksDepthRatio  float64
 	vcfRefBlocksBands       []int
-	vcfRefBlocksMaxGap      int
 	vcfRefBlocksPassthrough bool
 	vcfRefBlocksForce       bool
 )
@@ -50,21 +49,23 @@ What is kept:
   below --min-dp     dropped -- uncovered at the gate. For exome data plus
                      low-pass WGS this leaves essentially the exome.
 
-What is never merged across: a VARIANT RECORD -- any record with a real
-alternate, filtered or not -- and a block that declined to call (./.). Those
-are positions where the sample was not, or may not have been, reference; their
-gap is what keeps a block from claiming reference where the sample carries
-something, so no tolerance bridges them.
+What is never merged across:
+
+  a variant record   any record with a real alternate, filtered or not, and a
+                     block that declined to call (./.): positions where the
+                     sample was not, or may not have been, reference.
+  any gap            bases between two kept blocks, however few. In a gVCF
+                     that is a block dropped below --min-dp or bases the caller
+                     never reported -- not assayed either way. A block over it
+                     would answer 0/0 where nobody looked, so a block always
+                     bounds every base it covers.
 
 Coarsening, because a GATK gVCF breaks a block at every GQ change and a store
 never gates on GQ:
 
-  depth bands   adjacent blocks in the same depth band merge, keeping the
+  depth bands   abutting blocks in the same depth band merge, keeping the
                 lowest MIN_DP. The bands default to the roster store's own, so
                 a query gate means the same thing for blocks and catalog runs.
-  --max-gap N   merge across uncovered stretches of at most N bases (default
-                10). This weakens the claim to "covered at min_dp, with no
-                uncovered run longer than N", so N is recorded.
   --passthrough keep the source's blocks as written: no banding, no merging.
                 For targeted or exome work, where fidelity is cheap.
 
@@ -82,7 +83,6 @@ marker, so it is safe to rerun; an existing finished fragment is kept unless
   --min-dp N            drop blocks below this depth (default: the store's)
   --depth-ratio R       depth bands at min-dp x R^k (default: the store's bands)
   --depth-bands D,...   explicit depth bands instead
-  --max-gap N           longest uncovered stretch a merge may span (default 10)
   --passthrough         no banding and no merging
   --force               replace an existing finished fragment`,
 	Args: cobra.ExactArgs(1),
@@ -95,9 +95,6 @@ marker, so it is safe to rerun; an existing finished fragment is kept unless
 		if vcfRefBlocksRoster == "" {
 			return fmt.Errorf("--roster is required: a fragment is built for one store, " +
 				"and its sample and settings are checked against that store before any work is done")
-		}
-		if vcfRefBlocksMaxGap < 0 {
-			return fmt.Errorf("--max-gap %d is negative", vcfRefBlocksMaxGap)
 		}
 		if !varstore.CanWrite(vcfRefBlocksOut) {
 			return fmt.Errorf("cannot write to %s: no transport for its scheme is linked into this build",
@@ -152,7 +149,6 @@ marker, so it is safe to rerun; an existing finished fragment is kept unless
 			MinDP:       minDP,
 			DepthBands:  bands,
 			DepthRatio:  ratio,
-			MaxGap:      int32(vcfRefBlocksMaxGap),
 			Passthrough: vcfRefBlocksPassthrough,
 		})
 		if err != nil {
@@ -161,7 +157,6 @@ marker, so it is safe to rerun; an existing finished fragment is kept unless
 		stats, err := extractRefBlocks(r, sample, fw, varstore.Coarsener{
 			MinDP:       minDP,
 			Bands:       bands,
-			MaxGap:      int32(vcfRefBlocksMaxGap),
 			Passthrough: vcfRefBlocksPassthrough,
 		})
 		if err == nil {
@@ -327,7 +322,6 @@ func init() {
 	f.Float64Var(&vcfRefBlocksDepthRatio, "depth-ratio", varstore.DefaultDepthRatio,
 		"Depth bands at min-dp x ratio^k (default: the store's bands)")
 	f.IntSliceVar(&vcfRefBlocksBands, "depth-bands", nil, "Explicit depth bands (default: the store's)")
-	f.IntVar(&vcfRefBlocksMaxGap, "max-gap", 10, "Longest uncovered stretch, in bases, a merge may span")
 	f.BoolVar(&vcfRefBlocksPassthrough, "passthrough", false, "Keep the source's blocks: no banding, no merging")
 	f.BoolVar(&vcfRefBlocksForce, "force", false, "Replace an existing finished fragment")
 }
