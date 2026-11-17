@@ -25,52 +25,62 @@ func homRefSamplesAt(t *testing.T, input, locus string) []string {
 
 // THE END-TO-END CHECK the series was built toward. A store converted from the
 // pVCF, with each sample's gVCF extracted and attached, must answer an
-// off-catalog position the way the gVCFs themselves do when queried directly.
-// Fragments are --passthrough here, so the store holds exactly the source's
-// blocks and the two must agree sample for sample; coarsening may legitimately
-// bridge a short gap a gVCF leaves open, which is a different, recorded claim.
+// off-catalog position the way the gVCFs themselves do when queried directly --
+// both with the source's own blocks (--passthrough) and with the default
+// coarsening. Coarsening merges abutting blocks within a depth band and never
+// bridges a gap, so it must not change a single answer: a coarsened store that
+// read 0/0 inside a below-gate dip or an unreported stretch would be claiming an
+// observation the gVCF does not contain.
 func TestAttachedStoreAnswersOffCatalogLikeTheGvcfs(t *testing.T) {
-	roster, s1 := refBlocksFixture(t, "S1")
-	dir := t.TempDir()
-	// S2 is S1's layout with the 300-399 block at 3x: below the gate.
-	s2 := filepath.Join(dir, "S2.g.vcf")
-	g2 := strings.Replace(refBlocksGVCF("S2"),
-		"END=399\tGT:DP:GQ:MIN_DP\t0/0:30:30:30", "END=399\tGT:DP:GQ:MIN_DP\t0/0:3:30:3", 1)
-	if err := os.WriteFile(s2, []byte(g2), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	for _, mode := range []struct {
+		name  string
+		flags []string
+	}{{"passthrough", []string{"--passthrough"}}, {"coarsened", nil}} {
+		t.Run(mode.name, func(t *testing.T) {
+			roster, s1 := refBlocksFixture(t, "S1")
+			dir := t.TempDir()
+			// S2 is S1's layout with the 300-399 block at 3x: below the gate.
+			s2 := filepath.Join(dir, "S2.g.vcf")
+			g2 := strings.Replace(refBlocksGVCF("S2"),
+				"END=399\tGT:DP:GQ:MIN_DP\t0/0:30:30:30", "END=399\tGT:DP:GQ:MIN_DP\t0/0:3:30:3", 1)
+			if err := os.WriteFile(s2, []byte(g2), 0o644); err != nil {
+				t.Fatal(err)
+			}
 
-	frags := filepath.Join(dir, "frags")
-	for name, g := range map[string]string{"S1": s1, "S2": s2} {
-		runVcf(t, "refblock-calc", "--roster", roster, "--passthrough",
-			"--out", filepath.Join(frags, name), g)
-	}
-	runVcf(t, "refblock-attach", roster, frags)
+			frags := filepath.Join(dir, "frags")
+			for name, g := range map[string]string{"S1": s1, "S2": s2} {
+				args := append([]string{"refblock-calc", "--roster", roster}, mode.flags...)
+				runVcf(t, append(args, "--out", filepath.Join(frags, name), g)...)
+			}
+			runVcf(t, "refblock-attach", roster, frags)
 
-	gvcfs := map[string]string{}
-	for name, g := range map[string]string{"S1": s1, "S2": s2} {
-		gz := filepath.Join(dir, name+".g.vcf.gz")
-		bgzipIndex(t, g, gz)
-		gvcfs[name] = gz
-	}
+			gvcfs := map[string]string{}
+			for name, g := range map[string]string{"S1": s1, "S2": s2} {
+				gz := filepath.Join(dir, name+".g.vcf.gz")
+				bgzipIndex(t, g, gz)
+				gvcfs[name] = gz
+			}
 
-	for _, locus := range []string{
-		"chr1:150:C:T",  // a block both share
-		"chr1:350:C:T",  // S2's block there is below the gate
-		"chr1:602:C:T",  // inside a 3x block: nobody
-		"chr1:650:C:T",  // a block both share
-		"chr1:705:C:T",  // just past S1's own SNV at 700
-		"chr1:5000:C:T", // no block at all
-		"chr2:150:C:T",  // a chromosome with no catalog site
-	} {
-		var direct []string
-		for _, name := range []string{"S1", "S2"} {
-			direct = append(direct, homRefSamplesAt(t, gvcfs[name], locus)...)
-		}
-		store := homRefSamplesAt(t, roster, locus)
-		if !reflect.DeepEqual(store, direct) {
-			t.Errorf("%s: store reports %v as 0/0, the gVCFs %v", locus, store, direct)
-		}
+			for _, locus := range []string{
+				"chr1:150:C:T",  // a block both share
+				"chr1:350:C:T",  // S2's block there is below the gate
+				"chr1:405:C:T",  // a 10-base stretch neither gVCF reported
+				"chr1:602:C:T",  // inside a 3x dip between two 40x blocks: nobody
+				"chr1:650:C:T",  // a block both share
+				"chr1:705:C:T",  // just past S1's own SNV at 700
+				"chr1:5000:C:T", // no block at all
+				"chr2:150:C:T",  // a chromosome with no catalog site
+			} {
+				var direct []string
+				for _, name := range []string{"S1", "S2"} {
+					direct = append(direct, homRefSamplesAt(t, gvcfs[name], locus)...)
+				}
+				store := homRefSamplesAt(t, roster, locus)
+				if !reflect.DeepEqual(store, direct) {
+					t.Errorf("%s: store reports %v as 0/0, the gVCFs %v", locus, store, direct)
+				}
+			}
+		})
 	}
 }
 
@@ -140,7 +150,10 @@ func TestVarsummaryReportsAttachedRefBlocks(t *testing.T) {
 	runVcf(t, "refblock-calc", "--roster", roster, "--out", frag, s1)
 	runVcf(t, "refblock-attach", roster, frag)
 	out := runVcf(t, "summary", roster)
-	for _, want := range []string{"ref blocks yes", "gaps up to 10 bp", "ref_blocks"} {
+	if strings.Contains(out, "WARNING") {
+		t.Errorf("a store attached now carries a gap warning:\n%s", out)
+	}
+	for _, want := range []string{"ref blocks yes", "ref_blocks"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("varstore summary is missing %q:\n%s", want, out)
 		}
