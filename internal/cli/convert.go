@@ -906,8 +906,8 @@ func (c *parquetConverter) progressLine(pos int, now time.Time) string {
 
 // indexRecordCounts returns how many records each chromosome holds according
 // to the input's tabix index, keyed by CanonKey, or nil when there is no index
-// or it records no counts (htslib's indexes do; cghts's did not before
-// v0.12.9). Only progress reporting uses it, so any failure is silence, never
+// or it records no counts (htslib's indexes do; cghts's do since
+// compgenlab/cghts#73). Only progress reporting uses it, so any failure is silence, never
 // an error: a conversion must not fail over an estimate.
 func indexRecordCounts(ctx context.Context, path string) map[string]uint64 {
 	if path == "-" {
@@ -918,13 +918,16 @@ func indexRecordCounts(ctx context.Context, path string) map[string]uint64 {
 		return nil
 	}
 	defer tr.Close()
-	var out map[string]uint64
-	for _, ref := range tr.RefNames() {
-		if n, ok := tr.RecordCount(ref); ok {
-			if out == nil {
-				out = map[string]uint64{}
-			}
-			out[gtstore.CanonKey(ref)] = n
+	// All or nothing: with ok false some reference's count is unknown, and the
+	// list's zero for it would read as "empty" rather than "not recorded".
+	counts, ok := tr.RecordCounts()
+	if !ok {
+		return nil
+	}
+	out := make(map[string]uint64, len(counts))
+	for i, ref := range tr.RefNames() {
+		if i < len(counts) {
+			out[gtstore.CanonKey(ref)] = counts[i]
 		}
 	}
 	return out
