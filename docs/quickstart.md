@@ -41,8 +41,17 @@ left:
   chr2:121,450,332 / 242,193,529 (50.1%)  records 61,204 (34/s)  genotypes 1.84G (1.0M/s)  calls 2,310,442  elapsed 30m0s  eta ~30m
 ```
 
-The estimate assumes the rest of the chromosome is as dense as what came
-before, so treat it as rough. The summary at the end gives the overall rate,
+When the input has a tabix index that records how many records each
+chromosome holds (`tabix` and `bcftools index` write this), the percentage and
+estimate count records instead, which tracks the actual work more closely:
+
+```
+  chr2:121,450,332  record 61,204 of 122,310 (50.0%)  34/s  genotypes 1.84G (1.0M/s)  calls 2,310,442  elapsed 30m0s  eta ~30m
+```
+
+Otherwise they come from the position against the chromosome's length, which
+assumes the rest of the chromosome is as dense as what came before, so treat it
+as rough. The summary at the end gives the overall rate,
 which is the number to plan the next batch with.
 
 Each chromosome becomes a **volume**: a directory holding the `calls`,
