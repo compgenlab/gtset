@@ -1205,7 +1205,7 @@ func TestToParquetConvertsMsVcf(t *testing.T) {
 func TestToParquetProgressReportsPosition(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "p") + string(os.PathSeparator)
 	out := runVcf(t, "convert", "-v", "--out", store, "testdata/msvcf.vcf")
-	if !strings.Contains(out, "chr8: starting at 1000") {
+	if !strings.Contains(out, "chr8: starting at 1,000 of 145,138,636") {
 		t.Errorf("progress did not report the first coordinate:\n%s", out)
 	}
 }
