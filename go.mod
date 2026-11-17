@@ -3,7 +3,7 @@ module github.com/compgenlab/varstore
 go 1.24.9
 
 require (
-	github.com/compgenlab/cghts v0.12.6-0.20261117054027-cadc7e6b8990
+	github.com/compgenlab/cghts v0.12.6
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
 )
