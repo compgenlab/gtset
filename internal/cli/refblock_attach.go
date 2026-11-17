@@ -37,7 +37,8 @@ A fragment argument is a fragment directory, or a local directory whose
 subdirectories are fragments; --from reads one per line, for when there are
 too many for a command line. Every fragment must be finished, one per sample,
 for a sample on the store's roster, and built with the store's --min-dp and
-depth bands; fragments must also agree with each other on --max-gap.
+depth bands. A fragment from an older refblock-calc that merged across gaps is
+refused, since its blocks may claim bases that were never assayed.
 
 Every chromosome a fragment has blocks on becomes answerable. A store routes a
 query by chromosome to the volume that holds it, so a chromosome with no
