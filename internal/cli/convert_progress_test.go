@@ -154,3 +154,53 @@ func TestRoughDuration(t *testing.T) {
 		}
 	}
 }
+
+// indexedProgressFixture is progressFixture bgzipped and tabix-indexed. The
+// index is cghts's own, which records per-chromosome record counts.
+func indexedProgressFixture(t *testing.T, n, step int, length int64) string {
+	t.Helper()
+	gz := filepath.Join(t.TempDir(), "in.vcf.gz")
+	bgzipIndex(t, progressFixture(t, n, step, length), gz)
+	return gz
+}
+
+// With the index's count, progress counts records -- the work -- rather than
+// bases, which in an exome cluster in genes.
+func TestConvertProgressUsesIndexRecordCount(t *testing.T) {
+	fastClock(t)
+	in := indexedProgressFixture(t, 300, 30, 10_000)
+	out := runVcf(t, "convert", "-v", "--out", filepath.Join(t.TempDir(), "s"), in)
+	if !strings.Contains(out, "chr1: starting at 1 of 10,000 (300 records in the index)") {
+		t.Errorf("start line does not name the index's count:\n%s", out)
+	}
+	var lines []string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, " record ") && strings.Contains(l, " of 300 (") {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) == 0 {
+		t.Fatalf("no record-count progress lines in:\n%s", out)
+	}
+	if !strings.Contains(lines[0], "eta ~") || strings.Contains(lines[0], "/ 10,000") {
+		t.Errorf("record-based line should carry an estimate and no position percentage: %s", lines[0])
+	}
+	// "record 64 of 300 (21.3%)": the percentage is of records.
+	if !strings.Contains(lines[0], "record 64 of 300 (21.3%)") {
+		t.Errorf("first line's percentage is not of records: %s", lines[0])
+	}
+}
+
+// --region reads part of a chromosome, so a whole-chromosome count would make
+// the percentage wrong; progress stays positional.
+func TestConvertProgressIgnoresCountUnderRegion(t *testing.T) {
+	fastClock(t)
+	in := indexedProgressFixture(t, 300, 30, 10_000)
+	out := runVcf(t, "convert", "-v", "--region", "chr1", "--out", filepath.Join(t.TempDir(), "s"), in)
+	if strings.Contains(out, "records in the index") || strings.Contains(out, " of 300 (") {
+		t.Errorf("used the index's count under --region:\n%s", out)
+	}
+	if len(progressLines(out)) == 0 {
+		t.Errorf("no positional progress under --region:\n%s", out)
+	}
+}
