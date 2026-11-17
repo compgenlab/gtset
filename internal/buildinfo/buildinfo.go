@@ -1,4 +1,4 @@
-// Package buildinfo holds the varstore version (set via -ldflags at build time) and
+// Package buildinfo holds the gtstore version (set via -ldflags at build time) and
 // provenance helpers shared across commands. Keeping it in a leaf package lets
 // every command group reference the version without importing the cmd package.
 package buildinfo
@@ -38,8 +38,8 @@ func Date() string {
 }
 
 // Program names what wrote a store, for its manifest: the version alone cannot
-// say whether it is varstore's or that of cgkit, which wrote stores before this
+// say whether it is gtstore's or that of cgkit, which wrote stores before this
 // binary existed.
 func Program() string {
-	return "varstore " + String()
+	return "gtstore " + String()
 }

@@ -1,4 +1,4 @@
-# varstore
+# gtstore
 
 A sparse, queryable genotype store for cohort VCFs, and the command-line tool
 that builds and queries it.
@@ -10,13 +10,13 @@ answer; the store is just faster to ask. gVCF reference blocks can be attached
 per sample, so a store can also answer at positions no variant record mentions.
 
 The format and its query API live in
-[`cghts/varstore`](https://github.com/compgenlab/cghts); this repo is the CLI.
+[`cghts/gtstore`](https://github.com/compgenlab/cghts); this repo is the CLI.
 General VCF tooling is in [`cgkit`](https://github.com/compgenlab/cgkit).
 
 ## Building
 
 ```bash
-make build     # bin/varstore.{darwin,linux}_{arm64,amd64}, windows_amd64.exe
+make build     # bin/gtstore.{darwin,linux}_{arm64,amd64}, windows_amd64.exe
 make test
 ```
 
@@ -24,28 +24,28 @@ make test
 
 ```bash
 # 1. Convert the joint-called pVCF, one volume per chromosome
-varstore convert --out cohort/chr1 chr1.vcf.gz
-varstore convert --out cohort/chr2 chr2.vcf.gz
+gtstore convert --out cohort/chr1 chr1.vcf.gz
+gtstore convert --out cohort/chr2 chr2.vcf.gz
 
 # 2. Combine the volumes into one store
-varstore create cohort/
+gtstore create cohort/
 
 # 3. (optional) Reference blocks from each sample's gVCF -- one job per sample
-varstore refblock-calc --roster cohort --out frags/S0001 S0001.g.vcf.gz
+gtstore refblock-calc --roster cohort --out frags/S0001 S0001.g.vcf.gz
 
 # 4. (optional) Attach them; --replace S0001 later swaps in a redone sample
-varstore refblock-attach cohort/ frags/
+gtstore refblock-attach cohort/ frags/
 
 # 5. Query: sites, samples, or both
-varstore query cohort --variant chr1:1000:A:T
-varstore query cohort --variant panel.bed --sample S0001 --hom-ref
-varstore query cohort.vcf.gz --variant chr1:1000:A:T   # same answer, from the VCF
+gtstore query cohort --variant chr1:1000:A:T
+gtstore query cohort --variant panel.bed --sample S0001 --hom-ref
+gtstore query cohort.vcf.gz --variant chr1:1000:A:T   # same answer, from the VCF
 
 # Describe a store or a VCF without reading genotypes
-varstore summary cohort
+gtstore summary cohort
 ```
 
-Run `varstore <command> --help` for flags. `--profile=FILE` writes a CPU profile
+Run `gtstore <command> --help` for flags. `--profile=FILE` writes a CPU profile
 from anywhere on the command line.
 
 ## Commands

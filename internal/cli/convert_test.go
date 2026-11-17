@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 )
 
-// convert runs varstore convert into a temp dir and returns the store base name.
+// convert runs gtstore convert into a temp dir and returns the store base name.
 func convert(t *testing.T, input string, extra ...string) string {
 	t.Helper()
 	base := filepath.Join(t.TempDir(), "store")
@@ -22,9 +22,9 @@ func convert(t *testing.T, input string, extra ...string) string {
 
 // readCalls loads every call of a store back through the reading path, which is
 // how output correctness is checked -- by re-parsing rather than diffing bytes.
-func readCalls(t *testing.T, base string) []varstore.Call {
+func readCalls(t *testing.T, base string) []gtstore.Call {
 	t.Helper()
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatalf("OpenParquet(%s): %v", base, err)
 	}
@@ -34,9 +34,9 @@ func readCalls(t *testing.T, base string) []varstore.Call {
 	if err != nil {
 		t.Fatalf("Samples: %v", err)
 	}
-	var calls []varstore.Call
+	var calls []gtstore.Call
 	for _, name := range samples {
-		c, err := varstore.CollectCalls(s, varstore.Query{Samples: []string{name}})
+		c, err := gtstore.CollectCalls(s, gtstore.Query{Samples: []string{name}})
 		if err != nil {
 			t.Fatalf("Variants(%s): %v", name, err)
 		}
@@ -55,7 +55,7 @@ func TestVcfToParquetRequiresOut(t *testing.T) {
 func TestVcfToParquetWritesAllThreeFiles(t *testing.T) {
 	base := convert(t, "testdata/multiallelic.vcf")
 	for _, p := range []string{
-		varstore.CallsPath(base), varstore.CatalogPath(base), varstore.CatalogRunsPath(base),
+		gtstore.CallsPath(base), gtstore.CatalogPath(base), gtstore.CatalogRunsPath(base),
 	} {
 		st, err := os.Stat(p)
 		if err != nil {
@@ -75,7 +75,7 @@ func TestVcfToParquetSplitsMultiallelic(t *testing.T) {
 	base := convert(t, "testdata/multiallelic.vcf")
 	calls := readCalls(t, base)
 
-	got := map[string]varstore.Call{}
+	got := map[string]gtstore.Call{}
 	for _, c := range calls {
 		got[c.SampleID+"@"+c.Locus().String()] = c
 	}
@@ -121,7 +121,7 @@ func TestVcfToParquetSplitsMultiallelic(t *testing.T) {
 // a position everyone is reference at still has to be recorded as interrogated.
 func TestVcfToParquetSitesKeepsMonomorphic(t *testing.T) {
 	base := convert(t, "testdata/multiallelic.vcf")
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,12 +129,12 @@ func TestVcfToParquetSitesKeepsMonomorphic(t *testing.T) {
 
 	// chr1:300 has zero carriers, so it is absent from the calls entirely.
 	// Classify must still call it interrogated, not not-assayed.
-	states, err := s.Classify(varstore.Locus{Chrom: "1", Pos: 300, Ref: "G", Alt: "A"}, varstore.Gate{})
+	states, err := s.Classify(gtstore.Locus{Chrom: "1", Pos: 300, Ref: "G", Alt: "A"}, gtstore.Gate{})
 	if err != nil {
 		t.Fatalf("Classify: %v", err)
 	}
 	for _, st := range states {
-		if st.State != varstore.StateNonCarrier {
+		if st.State != gtstore.StateNonCarrier {
 			t.Errorf("%s at monomorphic site = %s, want non_carrier", st.SampleID, st.State)
 		}
 	}
@@ -144,24 +144,24 @@ func TestVcfToParquetSitesKeepsMonomorphic(t *testing.T) {
 // callable: S1 has DP 40 at chr1:400 but a "./." genotype, so its run must break.
 func TestVcfToParquetNoCallBreaksRun(t *testing.T) {
 	base := convert(t, "testdata/coverage.vcf")
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 
-	states, err := s.Classify(varstore.Locus{Chrom: "1", Pos: 400, Ref: "T", Alt: "C"}, varstore.Gate{})
+	states, err := s.Classify(gtstore.Locus{Chrom: "1", Pos: 400, Ref: "T", Alt: "C"}, gtstore.Gate{})
 	if err != nil {
 		t.Fatalf("Classify: %v", err)
 	}
-	byName := map[string]varstore.State{}
+	byName := map[string]gtstore.State{}
 	for _, st := range states {
 		byName[st.SampleID] = st.State
 	}
-	if byName["S1"] != varstore.StateNotAssayed {
+	if byName["S1"] != gtstore.StateNotAssayed {
 		t.Errorf("S1 at a no-call site = %s, want not_assayed (DP 40 but GT ./.)", byName["S1"])
 	}
-	if byName["S2"] != varstore.StateNonCarrier {
+	if byName["S2"] != gtstore.StateNonCarrier {
 		t.Errorf("S2 at the same site = %s, want non_carrier", byName["S2"])
 	}
 }
@@ -170,18 +170,18 @@ func TestVcfToParquetNoCallBreaksRun(t *testing.T) {
 // the threshold is not silently counted as a non-carrier.
 func TestVcfToParquetLowDepthIsNotAssayed(t *testing.T) {
 	base := convert(t, "testdata/coverage.vcf")
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 
-	states, err := s.Classify(varstore.Locus{Chrom: "1", Pos: 200, Ref: "C", Alt: "T"}, varstore.Gate{})
+	states, err := s.Classify(gtstore.Locus{Chrom: "1", Pos: 200, Ref: "C", Alt: "T"}, gtstore.Gate{})
 	if err != nil {
 		t.Fatalf("Classify: %v", err)
 	}
 	for _, st := range states {
-		if st.SampleID == "S2" && st.State != varstore.StateNotAssayed {
+		if st.SampleID == "S2" && st.State != gtstore.StateNotAssayed {
 			t.Errorf("S2 at DP 3 (--min-dp 10) = %s, want not_assayed", st.State)
 		}
 	}
@@ -224,20 +224,20 @@ func TestVarQueryHomRefRefusesWithoutRegions(t *testing.T) {
 // mentions -- and it is no longer reachable from the command line.
 func TestVarQueryBackendsAgree(t *testing.T) {
 	base := convert(t, "testdata/coverage.vcf")
-	fromVcf, err := varstore.OpenVcf("testdata/coverage.vcf")
+	fromVcf, err := gtstore.OpenVcf("testdata/coverage.vcf")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer fromVcf.Close()
-	fromPq, err := varstore.OpenParquet(base)
+	fromPq, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer fromPq.Close()
 
-	gate := varstore.Gate{MinDP: 10}
+	gate := gtstore.Gate{MinDP: 10}
 	for _, v := range []string{"1:100:A:G", "1:200:C:T", "1:400:T:C", "1:500:A:T"} {
-		locus, err := varstore.ParseLocus(v)
+		locus, err := gtstore.ParseLocus(v)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -341,14 +341,14 @@ func TestVarQueryRegionIsRepeatable(t *testing.T) {
 // non-carrier there.
 func TestOffCatalogLocusIsNotAssayed(t *testing.T) {
 	base := convert(t, "testdata/coverage.vcf")
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 
 	// Sanity: the position really is inside a run, so the test is meaningful.
-	known, err := s.SiteKnown(varstore.Locus{Chrom: "1", Pos: 250, Ref: "A", Alt: "G"})
+	known, err := s.SiteKnown(gtstore.Locus{Chrom: "1", Pos: 250, Ref: "A", Alt: "G"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +361,7 @@ func TestOffCatalogLocusIsNotAssayed(t *testing.T) {
 		t.Skip("chr1:250 is not bracketed by a run; the test would prove nothing")
 	}
 
-	states, err := s.Classify(varstore.Locus{Chrom: "1", Pos: 250, Ref: "A", Alt: "G"}, varstore.Gate{})
+	states, err := s.Classify(gtstore.Locus{Chrom: "1", Pos: 250, Ref: "A", Alt: "G"}, gtstore.Gate{})
 	if err != nil {
 		t.Fatalf("Classify: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestOffCatalogLocusIsNotAssayed(t *testing.T) {
 		t.Fatal("expected a state per sample")
 	}
 	for _, st := range states {
-		if st.State != varstore.StateNotAssayed {
+		if st.State != gtstore.StateNotAssayed {
 			t.Errorf("%s at an off-catalog locus = %s, want not_assayed "+
 				"(a plain VCF claims nothing between its records)", st.SampleID, st.State)
 		}
@@ -385,7 +385,7 @@ func TestOffCatalogLocusIsNotAssayed(t *testing.T) {
 // than non_carrier, which is the claim "no rows" is standing in for.
 func TestOffCatalogAgreesAcrossBackends(t *testing.T) {
 	base := convert(t, "testdata/coverage.vcf")
-	locus := varstore.Locus{Chrom: "1", Pos: 250, Ref: "A", Alt: "G"}
+	locus := gtstore.Locus{Chrom: "1", Pos: 250, Ref: "A", Alt: "G"}
 
 	fromVcf := dataRowsOnly(runVcf(t, "query", "--variant", "1:250:A:G",
 		"--hom-ref", "testdata/coverage.vcf"))
@@ -400,11 +400,11 @@ func TestOffCatalogAgreesAcrossBackends(t *testing.T) {
 	}
 
 	for _, in := range []string{"testdata/coverage.vcf", base} {
-		store, err := openVarStore(context.Background(), in, "")
+		store, err := openGTStore(context.Background(), in, "")
 		if err != nil {
 			t.Fatal(err)
 		}
-		states, err := store.Classify(locus, varstore.Gate{})
+		states, err := store.Classify(locus, gtstore.Gate{})
 		store.Close()
 		if err != nil {
 			t.Fatalf("%s: Classify: %v", in, err)
@@ -413,7 +413,7 @@ func TestOffCatalogAgreesAcrossBackends(t *testing.T) {
 			t.Fatalf("%s: expected a state per sample", in)
 		}
 		for _, st := range states {
-			if st.State != varstore.StateNotAssayed {
+			if st.State != gtstore.StateNotAssayed {
 				t.Errorf("%s: %s at an off-catalog locus = %s, want not_assayed "+
 					"(a plain VCF claims nothing between its records)", in, st.SampleID, st.State)
 			}
@@ -425,7 +425,7 @@ func TestOffCatalogAgreesAcrossBackends(t *testing.T) {
 // store answer off its catalog, and a plain VCF asserts nothing between records.
 func TestAConvertedStoreCarriesNoRefBlocks(t *testing.T) {
 	base := convert(t, "testdata/coverage.vcf")
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,20 +439,20 @@ func TestAConvertedStoreCarriesNoRefBlocks(t *testing.T) {
 // runBrackets reports whether any called-site run spans pos, which is what makes
 // the off-catalog test non-vacuous.
 func runBrackets(base, chrom string, pos int32) (bool, error) {
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		return false, err
 	}
 	defer s.Close()
 	// A run bracketing pos means Classify would have had evidence to misuse.
-	states, err := s.Classify(varstore.Locus{Chrom: chrom, Pos: 100, Ref: "A", Alt: "G"}, varstore.Gate{})
+	states, err := s.Classify(gtstore.Locus{Chrom: chrom, Pos: 100, Ref: "A", Alt: "G"}, gtstore.Gate{})
 	if err != nil {
 		return false, err
 	}
 	// chr1:100 and chr1:300 are both catalog sites called in S1, so S1's run
 	// spans 250. Confirm S1 was callable at the flanking site.
 	for _, st := range states {
-		if st.SampleID == "S1" && st.State == varstore.StateNonCarrier {
+		if st.SampleID == "S1" && st.State == gtstore.StateNonCarrier {
 			return true, nil
 		}
 	}
@@ -542,13 +542,13 @@ func TestParquetStorePreservesSourceChromNaming(t *testing.T) {
 			break
 		}
 	}
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 	for _, q := range []string{"chr1", "1"} {
-		known, err := s.SiteKnown(varstore.Locus{Chrom: q, Pos: 100, Ref: "A", Alt: "G"})
+		known, err := s.SiteKnown(gtstore.Locus{Chrom: q, Pos: 100, Ref: "A", Alt: "G"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -609,24 +609,24 @@ func TestVarQueryLocusColumnsAreSplit(t *testing.T) {
 //	chr1:300 G>A   all 0/0
 func TestSitesACAN(t *testing.T) {
 	base := convert(t, "testdata/multiallelic.vcf")
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 
 	cases := []struct {
-		locus             varstore.Locus
+		locus             gtstore.Locus
 		ac, an, nCarriers int32
 		why               string
 	}{
-		{varstore.Locus{Chrom: "chr1", Pos: 100, Ref: "A", Alt: "G"}, 3, 8, 2,
+		{gtstore.Locus{Chrom: "chr1", Pos: 100, Ref: "A", Alt: "G"}, 3, 8, 2,
 			"S1 het (1) + S3 hom (2) = 3 alleles across 2 carriers"},
-		{varstore.Locus{Chrom: "chr1", Pos: 200, Ref: "C", Alt: "T"}, 2, 8, 2,
+		{gtstore.Locus{Chrom: "chr1", Pos: 200, Ref: "C", Alt: "T"}, 2, 8, 2,
 			"S1 1/2 contributes one T, S2 0/1 one T"},
-		{varstore.Locus{Chrom: "chr1", Pos: 200, Ref: "C", Alt: "G"}, 3, 8, 2,
+		{gtstore.Locus{Chrom: "chr1", Pos: 200, Ref: "C", Alt: "G"}, 3, 8, 2,
 			"S1 1/2 one G + S4 2/2 two G = 3 alleles across 2 carriers"},
-		{varstore.Locus{Chrom: "chr1", Pos: 300, Ref: "G", Alt: "A"}, 0, 8, 0,
+		{gtstore.Locus{Chrom: "chr1", Pos: 300, Ref: "G", Alt: "A"}, 0, 8, 0,
 			"monomorphic, but still interrogated in 4 diploid samples"},
 	}
 	for _, tc := range cases {
@@ -654,7 +654,7 @@ func TestSitesACAN(t *testing.T) {
 
 	// The point of the test: at two of these loci AC and n_carriers differ, so
 	// one genuinely cannot stand in for the other.
-	site, _, _ := s.Site(varstore.Locus{Chrom: "chr1", Pos: 100, Ref: "A", Alt: "G"})
+	site, _, _ := s.Site(gtstore.Locus{Chrom: "chr1", Pos: 100, Ref: "A", Alt: "G"})
 	if site.AC == site.NCarriers {
 		t.Error("fixture no longer distinguishes AC from n_carriers; the test proves nothing")
 	}
@@ -665,14 +665,14 @@ func TestSitesACAN(t *testing.T) {
 // though its sample-level coverage counts are necessarily zero.
 func TestSitesACANSurviveNoCallable(t *testing.T) {
 	base := convert(t, "testdata/sample.vcf", "--no-callable")
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 
 	sawAN := false
-	if err := s.Sites(func(site varstore.Site) bool {
+	if err := s.Sites(func(site gtstore.Site) bool {
 		if site.AN > 0 {
 			sawAN = true
 			return false
@@ -856,13 +856,13 @@ func TestStorePathHelpers(t *testing.T) {
 			"s3://bucket/cohort/catalog.parquet", "s3://bucket/cohort/catalog_runs.parquet"},
 	}
 	for _, tc := range cases {
-		if got := varstore.CallsPath(tc.base); got != tc.calls {
+		if got := gtstore.CallsPath(tc.base); got != tc.calls {
 			t.Errorf("CallsPath(%q) = %q, want %q", tc.base, got, tc.calls)
 		}
-		if got := varstore.CatalogPath(tc.base); got != tc.sites {
+		if got := gtstore.CatalogPath(tc.base); got != tc.sites {
 			t.Errorf("CatalogPath(%q) = %q, want %q", tc.base, got, tc.sites)
 		}
-		if got := varstore.CatalogRunsPath(tc.base); got != tc.regions {
+		if got := gtstore.CatalogRunsPath(tc.base); got != tc.regions {
 			t.Errorf("CatalogRunsPath(%q) = %q, want %q", tc.base, got, tc.regions)
 		}
 	}
@@ -902,17 +902,17 @@ func TestStoreOverwriteRequiresForce(t *testing.T) {
 // enough to stop: a half-replaced set is worse than either whole outcome.
 func TestStoreOverwriteRefusesOnPartialSet(t *testing.T) {
 	base := convert(t, "testdata/coverage.vcf")
-	if err := os.Remove(varstore.CallsPath(base)); err != nil {
+	if err := os.Remove(gtstore.CallsPath(base)); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(varstore.CatalogRunsPath(base)); err != nil {
+	if err := os.Remove(gtstore.CatalogRunsPath(base)); err != nil {
 		t.Fatal(err)
 	}
 	err := runVcfErr(t, "convert", "--out", base, "testdata/coverage.vcf")
 	if err == nil {
 		t.Fatal("expected a refusal with only the sites member present")
 	}
-	if !strings.Contains(err.Error(), varstore.CatalogPath(base)) {
+	if !strings.Contains(err.Error(), gtstore.CatalogPath(base)) {
 		t.Errorf("error should name the surviving member, got: %v", err)
 	}
 }
@@ -930,8 +930,8 @@ func TestStoreOutSlashIsOptional(t *testing.T) {
 		}
 		runVcf(t, "convert", "--out", dir+suffix, "testdata/coverage.vcf")
 		for _, p := range []string{
-			varstore.CallsPath(dir), varstore.CatalogPath(dir),
-			varstore.CatalogRunsPath(dir), varstore.VolumeManifestPath(dir),
+			gtstore.CallsPath(dir), gtstore.CatalogPath(dir),
+			gtstore.CatalogRunsPath(dir), gtstore.VolumeManifestPath(dir),
 		} {
 			if _, err := os.Stat(p); err != nil {
 				t.Errorf("--out %q: %s missing: %v", dir+suffix, filepath.Base(p), err)
@@ -972,12 +972,12 @@ func TestMultiVcfCombines(t *testing.T) {
 	runVcf(t, "convert", "--out", base,
 		"testdata/multi_chr1.vcf", "testdata/multi_chr2.vcf")
 
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	for _, l := range []varstore.Locus{
+	for _, l := range []gtstore.Locus{
 		{Chrom: "chr1", Pos: 100, Ref: "A", Alt: "G"},
 		{Chrom: "chr2", Pos: 200, Ref: "T", Alt: "A"},
 	} {
@@ -1054,7 +1054,7 @@ func TestFailedConversionLeavesNothing(t *testing.T) {
 		"testdata/multi_chr1.vcf", "testdata/multi_chr2_othersamples.vcf"); err == nil {
 		t.Fatal("expected the conversion to fail")
 	}
-	if found := varstore.ExistingTables(base); len(found) > 0 {
+	if found := gtstore.ExistingTables(base); len(found) > 0 {
 		t.Errorf("failed conversion left %v behind", found)
 	}
 	// The retry must succeed without --force.
@@ -1073,7 +1073,7 @@ func dataRowsOnly(s string) string {
 	return strings.Join(out, "\n")
 }
 
-func keys(m map[string]varstore.Call) []string {
+func keys(m map[string]gtstore.Call) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

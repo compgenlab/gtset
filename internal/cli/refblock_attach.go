@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/compgenlab/cghts/gtstore"
 	"github.com/compgenlab/cghts/iosource"
-	"github.com/compgenlab/cghts/varstore"
-	"github.com/compgenlab/varstore/internal/buildinfo"
+	"github.com/compgenlab/gtstore/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -26,12 +26,12 @@ var refBlockAttachCmd = &cobra.Command{
 	Annotations: map[string]string{"since": "v0.1.0"},
 	Use:         "refblock-attach <store> [fragment ...]",
 	Short:       "Merge reference-block fragments into a store's ref_blocks",
-	Long: `Merge the per-sample fragments varstore refblock-calc wrote into a store's ref_blocks
+	Long: `Merge the per-sample fragments gtstore refblock-calc wrote into a store's ref_blocks
 table, so the store answers at positions off its catalog.
 
-  varstore refblock-attach cohort/ frags/
-  varstore refblock-attach cohort/ --from fragments.txt
-  varstore refblock-attach cohort/ frags/S0042 --replace S0042
+  gtstore refblock-attach cohort/ frags/
+  gtstore refblock-attach cohort/ --from fragments.txt
+  gtstore refblock-attach cohort/ frags/S0042 --replace S0042
 
 A fragment argument is a fragment directory, or a local directory whose
 subdirectories are fragments; --from reads one per line, for when there are
@@ -77,18 +77,18 @@ that disagree, which the archive refuses to open until it is rerun.`,
 		if len(dirs) == 0 && len(attachReplace) == 0 {
 			return fmt.Errorf("no fragments given")
 		}
-		frags, err := varstore.LoadFragments(ctx, dirs)
+		frags, err := gtstore.LoadFragments(ctx, dirs)
 		if err != nil {
 			return err
 		}
-		opts := varstore.AttachOpts{
+		opts := gtstore.AttachOpts{
 			Rebuild: attachRebuild,
 			Replace: attachReplace,
 			Batch:   attachBatch,
 			TempDir: attachTempDir,
 		}
 
-		res, err := varstore.AttachRefBlocksToStore(ctx, base, frags, opts,
+		res, err := gtstore.AttachRefBlocksToStore(ctx, base, frags, opts,
 			buildinfo.Program(), buildinfo.CommandLine())
 		if err != nil {
 			return err
@@ -166,7 +166,7 @@ func expandFragments(args []string, from string) ([]string, error) {
 }
 
 func hasFragmentMeta(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, varstore.FragmentMetaFile))
+	_, err := os.Stat(filepath.Join(dir, gtstore.FragmentMetaFile))
 	return err == nil
 }
 
@@ -175,6 +175,6 @@ func init() {
 	f.BoolVar(&attachRebuild, "rebuild", false, "Rebuild ref_blocks from these fragments alone")
 	f.StringSliceVar(&attachReplace, "replace", nil, "Samples to replace in the existing ref_blocks")
 	f.StringVar(&attachFrom, "from", "", "Read fragment directories from FILE, one per line")
-	f.IntVar(&attachBatch, "batch", varstore.DefaultAttachBatch, "Fragments merged at once")
+	f.IntVar(&attachBatch, "batch", gtstore.DefaultAttachBatch, "Fragments merged at once")
 	f.StringVar(&attachTempDir, "tmp", "", "Directory for intermediate merge files")
 }

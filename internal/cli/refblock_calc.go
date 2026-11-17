@@ -6,10 +6,10 @@ import (
 	"io"
 	"slices"
 
-	"github.com/compgenlab/cghts/varstore"
-	_ "github.com/compgenlab/cghts/varstore/sinks3" // --out s3://...
+	"github.com/compgenlab/cghts/gtstore"
+	_ "github.com/compgenlab/cghts/gtstore/sinks3" // --out s3://...
 	"github.com/compgenlab/cghts/vcf"
-	"github.com/compgenlab/varstore/internal/buildinfo"
+	"github.com/compgenlab/gtstore/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +26,7 @@ var (
 var refBlockCalcCmd = &cobra.Command{
 	Annotations: map[string]string{"since": "v0.1.0"},
 	Use:         "refblock-calc <sample.g.vcf.gz>",
-	Short:       "Extract one sample's reference blocks from a gVCF, for a varstore",
+	Short:       "Extract one sample's reference blocks from a gVCF, for a gtstore",
 	Long: `Read one sample's gVCF and write its reference blocks as a FRAGMENT: the
 positive coverage claims a store's ref_blocks table is built from.
 
@@ -37,9 +37,9 @@ how that is captured. Genotypes still come from the pVCF; a fragment holds no
 ALT calls, only spans where the sample was observed to be reference.
 
 Run it once per sample, independently -- it is single-sample and streaming, and
-the fragments are merged into a store afterwards (varstore refblock-attach).
+the fragments are merged into a store afterwards (gtstore refblock-attach).
 
-  varstore refblock-calc S0001.g.vcf.gz --roster cohort/ --out frags/S0001
+  gtstore refblock-calc S0001.g.vcf.gz --roster cohort/ --out frags/S0001
 
 What is kept:
 
@@ -96,7 +96,7 @@ marker, so it is safe to rerun; an existing finished fragment is kept unless
 			return fmt.Errorf("--roster is required: a fragment is built for one store, " +
 				"and its sample and settings are checked against that store before any work is done")
 		}
-		if !varstore.CanWrite(vcfRefBlocksOut) {
+		if !gtstore.CanWrite(vcfRefBlocksOut) {
 			return fmt.Errorf("cannot write to %s: no transport for its scheme is linked into this build",
 				vcfRefBlocksOut)
 		}
@@ -130,18 +130,18 @@ marker, so it is safe to rerun; an existing finished fragment is kept unless
 				"attached, so nothing was written", sample, len(roster), vcfRefBlocksRoster)
 		}
 
-		sink, err := varstore.OpenSink(vcfRefBlocksOut)
+		sink, err := gtstore.OpenSink(vcfRefBlocksOut)
 		if err != nil {
 			return err
 		}
-		if _, done, err := sink.Stat(varstore.FragmentMetaFile); err != nil {
+		if _, done, err := sink.Stat(gtstore.FragmentMetaFile); err != nil {
 			return err
 		} else if done && !vcfRefBlocksForce {
 			return fmt.Errorf("%s already holds a finished fragment; use --force to replace it",
 				vcfRefBlocksOut)
 		}
 
-		fw, err := varstore.NewFragmentWriter(vcfRefBlocksOut, varstore.FragmentMeta{
+		fw, err := gtstore.NewFragmentWriter(vcfRefBlocksOut, gtstore.FragmentMeta{
 			Program:     buildinfo.Program(),
 			Command:     buildinfo.CommandLine(),
 			Source:      in,
@@ -154,7 +154,7 @@ marker, so it is safe to rerun; an existing finished fragment is kept unless
 		if err != nil {
 			return err
 		}
-		stats, err := extractRefBlocks(r, sample, fw, varstore.Coarsener{
+		stats, err := extractRefBlocks(r, sample, fw, gtstore.Coarsener{
 			MinDP:       minDP,
 			Bands:       bands,
 			Passthrough: vcfRefBlocksPassthrough,
@@ -182,24 +182,24 @@ marker, so it is safe to rerun; an existing finished fragment is kept unless
 
 // rosterOf reads a store's samples and conversion settings without opening its
 // tables: the manifest is all a fragment needs to agree with.
-func rosterOf(cmd *cobra.Command, locator string) ([]string, varstore.ManifestParams, error) {
-	store, err := varstore.Open(cmd.Context(), locator, "")
+func rosterOf(cmd *cobra.Command, locator string) ([]string, gtstore.ManifestParams, error) {
+	store, err := gtstore.Open(cmd.Context(), locator, "")
 	if err != nil {
-		return nil, varstore.ManifestParams{}, err
+		return nil, gtstore.ManifestParams{}, err
 	}
 	defer store.Close()
 	samples, err := store.Samples()
 	if err != nil {
-		return nil, varstore.ManifestParams{}, err
+		return nil, gtstore.ManifestParams{}, err
 	}
 	switch s := store.(type) {
-	case *varstore.VarStore:
+	case *gtstore.GTStore:
 		return samples, s.StoreManifest().Params, nil
-	case *varstore.ParquetVolume:
+	case *gtstore.ParquetVolume:
 		return samples, s.VolumeManifest().Params, nil
 	}
-	return nil, varstore.ManifestParams{}, fmt.Errorf(
-		"--roster %s is not a varstore; fragments are attached to a store, not a VCF", locator)
+	return nil, gtstore.ManifestParams{}, fmt.Errorf(
+		"--roster %s is not a gtstore; fragments are attached to a store, not a VCF", locator)
 }
 
 // refBlocksSettings resolves the gate and bands a fragment is built with.
@@ -208,7 +208,7 @@ func rosterOf(cmd *cobra.Command, locator string) ([]string, varstore.ManifestPa
 // with it. A fragment banded or gated differently from its store would be
 // refused at attach -- after the job that built it, one of perhaps ten
 // thousand, has already run.
-func refBlocksSettings(cmd *cobra.Command, p varstore.ManifestParams) (int32, []int32, float64, error) {
+func refBlocksSettings(cmd *cobra.Command, p gtstore.ManifestParams) (int32, []int32, float64, error) {
 	minDP := p.MinDP
 	if cmd.Flags().Changed("min-dp") {
 		if int32(vcfRefBlocksMinDP) != p.MinDP {
@@ -238,7 +238,7 @@ func refBlocksSettings(cmd *cobra.Command, p varstore.ManifestParams) (int32, []
 				start = 1
 			}
 			var err error
-			if bands, err = varstore.GeometricDepthBands(start, ratio, varstore.MaxDepthBand); err != nil {
+			if bands, err = gtstore.GeometricDepthBands(start, ratio, gtstore.MaxDepthBand); err != nil {
 				return 0, nil, 0, fmt.Errorf("--depth-ratio: %w", err)
 			}
 		}
@@ -258,7 +258,7 @@ type refBlockStats struct {
 
 // extractRefBlocks streams the gVCF into the coarsener and the coarsener into
 // the fragment.
-func extractRefBlocks(r *vcf.VcfReader, sample string, fw *varstore.FragmentWriter, co varstore.Coarsener) (refBlockStats, error) {
+func extractRefBlocks(r *vcf.VcfReader, sample string, fw *gtstore.FragmentWriter, co gtstore.Coarsener) (refBlockStats, error) {
 	var st refBlockStats
 	co.Emit = fw.Write
 	for {
@@ -277,11 +277,11 @@ func extractRefBlocks(r *vcf.VcfReader, sample string, fw *varstore.FragmentWrit
 			}
 			continue
 		}
-		sf, err := varstore.ReadSample(rec, 0)
+		sf, err := gtstore.ReadSample(rec, 0)
 		if err != nil {
 			return st, err
 		}
-		if !varstore.IsHomRef(sf.GT) {
+		if !gtstore.IsHomRef(sf.GT) {
 			// A block that declined to call says nothing about reference.
 			st.barriers++
 			if err := co.Barrier(); err != nil {
@@ -293,14 +293,14 @@ func extractRefBlocks(r *vcf.VcfReader, sample string, fw *varstore.FragmentWrit
 		// Unknown depth vouches for nothing, so it reads as zero and is dropped
 		// by any positive gate.
 		dp, _ := rec.BlockDepth(0)
-		gq := varstore.Missing
+		gq := gtstore.Missing
 		if v, ok := rec.BlockRGQ(0); ok {
 			gq = v
 		}
 		if dp < co.MinDP {
 			st.dropped++
 		}
-		if err := co.Block(varstore.RefBlock{
+		if err := co.Block(gtstore.RefBlock{
 			SampleID: sample,
 			Chrom:    rec.Chrom,
 			Start:    int32(rec.Pos),
@@ -319,7 +319,7 @@ func init() {
 	f.StringVar(&vcfRefBlocksOut, "out", "", "Fragment directory, created if needed")
 	f.StringVar(&vcfRefBlocksRoster, "roster", "", "The store the fragment will be attached to")
 	f.IntVar(&vcfRefBlocksMinDP, "min-dp", 10, "Drop blocks below this depth (default: the store's)")
-	f.Float64Var(&vcfRefBlocksDepthRatio, "depth-ratio", varstore.DefaultDepthRatio,
+	f.Float64Var(&vcfRefBlocksDepthRatio, "depth-ratio", gtstore.DefaultDepthRatio,
 		"Depth bands at min-dp x ratio^k (default: the store's bands)")
 	f.IntSliceVar(&vcfRefBlocksBands, "depth-bands", nil, "Explicit depth bands (default: the store's)")
 	f.BoolVar(&vcfRefBlocksPassthrough, "passthrough", false, "Keep the source's blocks: no banding, no merging")

@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,7 +48,7 @@ func TestTargetBedIsZeroBased(t *testing.T) {
 
 	// The same interval written as a site list means one position, not a range.
 	list := writeFile(t, "p.txt", "chr1 99 300\n")
-	if f, err := varstore.DetectTargetFile(context.Background(), list); err != nil || f != varstore.TargetBED {
+	if f, err := gtstore.DetectTargetFile(context.Background(), list); err != nil || f != gtstore.TargetBED {
 		t.Fatalf("a three-column numeric line is a BED by construction; got %q %v", f, err)
 	}
 }
@@ -85,7 +85,7 @@ func TestTargetColonContigsAreNotLoci(t *testing.T) {
 		"HLA-B*07:02:01",    // three fields
 		"chr1:100:A",        // a locus missing a field lands here too
 	} {
-		set, err := varstore.ParseTargets(context.Background(), []string{name})
+		set, err := gtstore.ParseTargets(context.Background(), []string{name})
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -98,7 +98,7 @@ func TestTargetColonContigsAreNotLoci(t *testing.T) {
 	}
 
 	// A real locus is still a locus, including an indel whose alleles are long.
-	set, err := varstore.ParseTargets(context.Background(), []string{"chr1:300:G:GATTACA"})
+	set, err := gtstore.ParseTargets(context.Background(), []string{"chr1:300:G:GATTACA"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,7 +11,7 @@ import (
 
 // bgzipIndex writes src as a bgzipped VCF at dst with a .tbi beside it, for the
 // tests that need an indexed VCF as a query backend. It is a fixture step, not
-// something varstore offers: this binary creates and queries stores, and leaves
+// something gtstore offers: this binary creates and queries stores, and leaves
 // VCF manipulation to cgkit.
 func bgzipIndex(tb testing.TB, src, dst string) {
 	tb.Helper()

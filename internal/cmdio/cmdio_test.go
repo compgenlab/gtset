@@ -119,7 +119,7 @@ func TestDiscardOnStdoutIsANoOp(t *testing.T) {
 	}
 }
 
-// varstore reads from anywhere and writes locally, and the refusal names the flag
+// gtstore reads from anywhere and writes locally, and the refusal names the flag
 // it came from rather than failing deep inside a writer with a mangled path.
 func TestRemoteOutputIsRefusedByFlagName(t *testing.T) {
 	cmd, _ := testCmd()

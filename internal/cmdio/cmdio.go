@@ -18,7 +18,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/compgenlab/varstore/internal/locator"
+	"github.com/compgenlab/gtstore/internal/locator"
 	"github.com/spf13/cobra"
 )
 

@@ -12,9 +12,9 @@ import (
 
 	"strconv"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 	"github.com/compgenlab/cghts/vcf"
-	"github.com/compgenlab/varstore/internal/buildinfo"
+	"github.com/compgenlab/gtstore/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -37,14 +37,14 @@ var queryCmd = &cobra.Command{
 	Use:         "query <input.vcf | store-base>",
 	Short:       "Query genotypes by site, by sample, or both",
 	Long: `Query genotypes without caring which format holds them. The input may be
-a VCF (plain or bgzipped) or a Parquet store written by varstore convert. A store
+a VCF (plain or bgzipped) or a Parquet store written by gtstore convert. A store
 is a directory, and may be named by it ("cohort" or "cohort/") or by any member
 inside it ("cohort/calls.parquet", "cohort/manifest.json.gz"). The backend is
 inferred from the path; override with --store.
 
-A store must carry the manifest varstore convert writes when a conversion
+A store must carry the manifest gtstore convert writes when a conversion
 completes; one written by an older converter, or left behind by a conversion that
-was interrupted, is refused rather than queried. Inspect it with varstore summary.
+was interrupted, is refused rather than queried. Inspect it with gtstore summary.
 
 Two independent axes, at least one of which must be given. --variant selects
 sites and --sample selects subjects; they compose rather than exclude.
@@ -201,7 +201,7 @@ written where nothing is known would assert a depth the data never had.`,
 			q.IncludeRef = true
 		}
 
-		store, err := openVarStore(cmd.Context(), args[0], vcfVarQueryStore)
+		store, err := openGTStore(cmd.Context(), args[0], vcfVarQueryStore)
 		if err != nil {
 			return err
 		}
@@ -266,17 +266,17 @@ written where nothing is known would assert a depth the data never had.`,
 	},
 }
 
-// openVarStore picks a backend for path. kind may force "vcf" or "parquet";
+// openGTStore picks a backend for path. kind may force "vcf" or "parquet";
 // empty infers from the locator.
 //
-// The resolution itself lives in varstore, which owns what a store looks like.
+// The resolution itself lives in gtstore, which owns what a store looks like.
 // It used to live here and reached for os.Stat twice, so a remote locator could
 // only ever be recognized by its suffix -- a bare base name or a directory form
 // resolved to nothing. All this adds is the flag advice, which is a CLI concern
 // and the one thing the library should not be spelling out.
-func openVarStore(ctx context.Context, path, kind string) (varstore.Store, error) {
-	store, err := varstore.Open(ctx, path, kind)
-	if err != nil && kind == "" && errors.Is(err, varstore.ErrUnknownStoreKind) {
+func openGTStore(ctx context.Context, path, kind string) (gtstore.Store, error) {
+	store, err := gtstore.Open(ctx, path, kind)
+	if err != nil && kind == "" && errors.Is(err, gtstore.ErrUnknownStoreKind) {
 		return nil, fmt.Errorf("%w; pass --store vcf or --store parquet", err)
 	}
 	return store, err
@@ -296,11 +296,11 @@ func provenance(out *bufio.Writer, source string) {
 // built at one threshold; a query gating at a different one is not asking a
 // question the store can answer consistently, and the two backends will stop
 // agreeing. That is invisible without being told.
-func describeStore(cmd *cobra.Command, store varstore.Store, path string, g varstore.Gate) {
+func describeStore(cmd *cobra.Command, store gtstore.Store, path string, g gtstore.Gate) {
 	ctx := cmd.Context()
 	out := cmd.ErrOrStderr()
 	switch s := store.(type) {
-	case *varstore.ParquetVolume:
+	case *gtstore.ParquetVolume:
 		p := s.Provenance()
 		fmt.Fprintf(out, "store    parquet %s (%d samples)\n", path, p.NumSamples)
 		if p.Source != "" {
@@ -311,12 +311,12 @@ func describeStore(cmd *cobra.Command, store varstore.Store, path string, g vars
 		}
 		// Only these two of the recorded metadata keys, because only these two
 		// change how the rows below should be read: which callset this is, and
-		// what the coordinates mean. The rest is catalogue -- varstore summary
+		// what the coordinates mean. The rest is catalogue -- gtstore summary
 		// prints all of it.
-		if v := p.Meta[varstore.MetaKeyDataset]; v != "" {
+		if v := p.Meta[gtstore.MetaKeyDataset]; v != "" {
 			fmt.Fprintf(out, "  dataset     %s\n", v)
 		}
-		if v := p.Meta[varstore.MetaKeyReference]; v != "" {
+		if v := p.Meta[gtstore.MetaKeyReference]; v != "" {
 			fmt.Fprintf(out, "  reference   %s\n", v)
 		}
 		if p.RefBlocks {
@@ -341,7 +341,7 @@ func describeStore(cmd *cobra.Command, store varstore.Store, path string, g vars
 				"        a store keeps only alternate genotypes, so the reference call\n"+
 				"        itself was never recorded -- only the fact that it was made.\n")
 		}
-	case *varstore.VcfStore:
+	case *gtstore.VcfStore:
 		names, _ := s.Samples()
 		kind := "vcf"
 		if isGvcfPath(ctx, path) {
@@ -384,7 +384,7 @@ func describeGate(out io.Writer, gate, convMinDP int32, bands []int32) {
 	if len(bands) == 0 {
 		bands = []int32{convMinDP}
 	}
-	lo, hi, inside := varstore.BandContaining(bands, gate)
+	lo, hi, inside := gtstore.BandContaining(bands, gate)
 	if !inside {
 		return // on a boundary: exact
 	}
@@ -428,7 +428,7 @@ func isGvcfPath(ctx context.Context, path string) bool {
 // note says where the answer comes from instead of predicting there is none.
 // It returns the off-catalog loci, which is how ref_source tells a block-derived
 // 0/0 from a catalog one without asking the store row by row.
-func warnUnknownSites(cmd *cobra.Command, store varstore.Store, q varstore.Query) map[string]bool {
+func warnUnknownSites(cmd *cobra.Command, store gtstore.Store, q gtstore.Query) map[string]bool {
 	blocks := false
 	if b, ok := store.(interface{ HasRefBlocks() bool }); ok {
 		blocks = b.HasRefBlocks()
@@ -454,8 +454,8 @@ func warnUnknownSites(cmd *cobra.Command, store varstore.Store, q varstore.Query
 }
 
 // locusKey identifies a locus across contig spellings.
-func locusKey(l varstore.Locus) string {
-	return fmt.Sprintf("%s:%d:%s:%s", varstore.CanonKey(l.Chrom), l.Pos, l.Ref, l.Alt)
+func locusKey(l gtstore.Locus) string {
+	return fmt.Sprintf("%s:%d:%s:%s", gtstore.CanonKey(l.Chrom), l.Pos, l.Ref, l.Alt)
 }
 
 // refSourceOf names the evidence a reference row rests on, "." for anything else.
@@ -464,14 +464,14 @@ func locusKey(l varstore.Locus) string {
 // gVCF block row has no alternate ("."), and a 0/0 at a locus the catalog lacks
 // can only have come from the store's reference blocks. Any other reference row
 // was genotyped at a catalog site -- a run in a store, a record in a VCF.
-func refSourceOf(c varstore.Call, offCatalog map[string]bool) string {
-	if !varstore.IsHomRef(c.GT) {
+func refSourceOf(c gtstore.Call, offCatalog map[string]bool) string {
+	if !gtstore.IsHomRef(c.GT) {
 		return "."
 	}
 	if c.Alt == "." || offCatalog[locusKey(c.Locus())] {
-		return string(varstore.RefFromBlock)
+		return string(gtstore.RefFromBlock)
 	}
-	return string(varstore.RefFromCatalog)
+	return string(gtstore.RefFromCatalog)
 }
 
 // buildQuery turns the flags into one Query.
@@ -480,9 +480,9 @@ func refSourceOf(c varstore.Call, offCatalog map[string]bool) string {
 // legal: naming both is the variants-by-samples question that used to be a hard
 // error, naming only --region asks for a window, and naming only --sample asks
 // what that subject carries.
-func buildQuery(ctx context.Context) (varstore.Query, *varstore.Targets, *sampleSet, error) {
-	q := varstore.Query{
-		Gate: varstore.Gate{
+func buildQuery(ctx context.Context) (gtstore.Query, *gtstore.Targets, *sampleSet, error) {
+	q := gtstore.Query{
+		Gate: gtstore.Gate{
 			MinDP:         int32(vcfVarQueryMinDP),
 			MinADAlt:      int32(vcfVarQueryMinADAlt),
 			MinABHet:      vcfVarQueryMinABHet,
@@ -490,7 +490,7 @@ func buildQuery(ctx context.Context) (varstore.Query, *varstore.Targets, *sample
 		},
 		IncludeRef: vcfVarQueryHomRef,
 	}
-	t, err := varstore.ParseTargets(ctx, vcfVarQueryVariants)
+	t, err := gtstore.ParseTargets(ctx, vcfVarQueryVariants)
 	if err != nil {
 		return q, nil, nil, err
 	}
@@ -508,18 +508,18 @@ func buildQuery(ctx context.Context) (varstore.Query, *varstore.Targets, *sample
 // streaming, since a streaming query cannot be counted afterwards.
 type tally struct {
 	alt, ref  int
-	altWithDP int                       // ALT rows carrying a real DP
-	byLocus   map[varstore.Locus][2]int // [alt, ref] per locus
+	altWithDP int                      // ALT rows carrying a real DP
+	byLocus   map[gtstore.Locus][2]int // [alt, ref] per locus
 }
 
-func newTally() *tally { return &tally{byLocus: map[varstore.Locus][2]int{}} }
+func newTally() *tally { return &tally{byLocus: map[gtstore.Locus][2]int{}} }
 
-func (t *tally) add(c varstore.Call) {
+func (t *tally) add(c gtstore.Call) {
 	n := t.byLocus[c.Locus()]
-	if varstore.IsAltCarrier(c.GT) {
+	if gtstore.IsAltCarrier(c.GT) {
 		t.alt++
 		n[0]++
-		if c.DP != varstore.Missing {
+		if c.DP != gtstore.Missing {
 			t.altWithDP++
 		}
 	} else {
@@ -530,7 +530,7 @@ func (t *tally) add(c varstore.Call) {
 }
 
 // streamCalls runs the query and hands each row to fn, tallying as it goes.
-func streamCalls(store varstore.Store, q varstore.Query, fn func(varstore.Call) error) (*tally, error) {
+func streamCalls(store gtstore.Store, q gtstore.Query, fn func(gtstore.Call) error) (*tally, error) {
 	seq, err := store.Calls(q)
 	if err != nil {
 		return nil, err
@@ -549,11 +549,11 @@ func streamCalls(store varstore.Store, q varstore.Query, fn func(varstore.Call) 
 }
 
 // writeCallsTSV streams the shared tabular layout.
-func writeCallsTSV(out *bufio.Writer, store varstore.Store, q varstore.Query, source string, offCatalog map[string]bool) (*tally, error) {
+func writeCallsTSV(out *bufio.Writer, store gtstore.Store, q gtstore.Query, source string, offCatalog map[string]bool) (*tally, error) {
 	provenance(out, source)
 	fmt.Fprintln(out, strings.Join(tsvHeader(), "\t"))
 	minDP := vouchedMinDP(store)
-	return streamCalls(store, q, func(c varstore.Call) error {
+	return streamCalls(store, q, func(c gtstore.Call) error {
 		row := fmt.Sprintf("%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
 			c.Chrom, c.Pos, c.Ref, c.Alt, c.SampleID, c.GT,
 			intOrDot(c.DP), minDPOf(c, minDP),
@@ -569,10 +569,10 @@ func writeCallsTSV(out *bufio.Writer, store varstore.Store, q varstore.Query, so
 
 // writeCallsJSON streams a JSON array rather than buffering one, so the shape is
 // the same at any scale.
-func writeCallsJSON(out *bufio.Writer, store varstore.Store, q varstore.Query, offCatalog map[string]bool) (*tally, error) {
+func writeCallsJSON(out *bufio.Writer, store gtstore.Store, q gtstore.Query, offCatalog map[string]bool) (*tally, error) {
 	fmt.Fprintln(out, "[")
 	first := true
-	t, err := streamCalls(store, q, func(c varstore.Call) error {
+	t, err := streamCalls(store, q, func(c gtstore.Call) error {
 		if !first {
 			fmt.Fprintln(out, ",")
 		}
@@ -580,7 +580,7 @@ func writeCallsJSON(out *bufio.Writer, store varstore.Store, q varstore.Query, o
 		// ref_source rides beside the call rather than inside it: Call is the
 		// store's row type, and provenance is a property of the answer.
 		row := struct {
-			varstore.Call
+			gtstore.Call
 			RefSource string `json:"ref_source,omitempty"`
 		}{Call: c}
 		if s := refSourceOf(c, offCatalog); s != "." {
@@ -609,7 +609,7 @@ func writeCallsJSON(out *bufio.Writer, store varstore.Store, q varstore.Query, o
 // It buffers only ONE locus at a time. Rows arrive in the store's order, so every
 // row for a locus is contiguous -- the buffer is bounded by the sample count, not
 // by the query, and records come out in contig order without a comparator.
-func writeCallsVCF(w *vcf.VcfWriter, store varstore.Store, q varstore.Query, source string) (*tally, error) {
+func writeCallsVCF(w *vcf.VcfWriter, store gtstore.Store, q gtstore.Query, source string) (*tally, error) {
 	names := q.Samples
 	if len(names) == 0 {
 		roster, err := store.Samples()
@@ -631,8 +631,8 @@ func writeCallsVCF(w *vcf.VcfWriter, store varstore.Store, q varstore.Query, sou
 		return nil, err
 	}
 
-	var cur varstore.Locus
-	row := make([]varstore.Call, len(names))
+	var cur gtstore.Locus
+	row := make([]gtstore.Call, len(names))
 	held := false
 
 	flush := func() error {
@@ -689,14 +689,14 @@ func writeCallsVCF(w *vcf.VcfWriter, store varstore.Store, q varstore.Query, sou
 			}
 		}
 		for i := range row {
-			row[i] = varstore.Call{}
+			row[i] = gtstore.Call{}
 		}
 		held = false
 		return w.WriteRecord(rec)
 	}
 
-	t, err := streamCalls(store, q, func(c varstore.Call) error {
-		if held && !varstore.SameLocus(c.Locus(), cur) {
+	t, err := streamCalls(store, q, func(c gtstore.Call) error {
+		if held && !gtstore.SameLocus(c.Locus(), cur) {
 			if err := flush(); err != nil {
 				return err
 			}
@@ -721,7 +721,7 @@ func writeCallsVCF(w *vcf.VcfWriter, store varstore.Store, q varstore.Query, sou
 // callable runs -- so it can differ from the store's own ungated AN wherever a
 // sample was called below the threshold. The note records that in the file, which
 // outlives the terminal the -v output went to.
-func gtMatrixHeader(names []string, source string, store varstore.Store, q varstore.Query) (*vcf.VcfHeader, error) {
+func gtMatrixHeader(names []string, source string, store gtstore.Store, q gtstore.Query) (*vcf.VcfHeader, error) {
 	h := vcf.NewVcfHeader()
 	h.SetSamples(names)
 	// IsInfo is what makes AnnotationDef.String() write "##INFO" rather than
@@ -758,15 +758,15 @@ func gtMatrixHeader(names []string, source string, store varstore.Store, q varst
 		}
 	}
 	stampVcfProvenance(h, "query")
-	h.AddLine("##varstore_querySource=" + source)
-	h.AddLine("##varstore_queryNote=AC/AN/AF/NS/nhomalt are recomputed over the samples in " +
+	h.AddLine("##gtstore_querySource=" + source)
+	h.AddLine("##gtstore_queryNote=AC/AN/AF/NS/nhomalt are recomputed over the samples in " +
 		"this file; AN counts only samples the source can vouch for as called at the depth threshold")
-	if ps, ok := store.(*varstore.ParquetVolume); ok {
+	if ps, ok := store.(*gtstore.ParquetVolume); ok {
 		p := ps.Provenance()
 		if p.Source != "" {
-			h.AddLine("##varstore_queryStoreSource=" + p.Source)
+			h.AddLine("##gtstore_queryStoreSource=" + p.Source)
 		}
-		h.AddLine("##varstore_queryNote=0/0 genotypes recovered from a store carry no " +
+		h.AddLine("##gtstore_queryNote=0/0 genotypes recovered from a store carry no " +
 			"DP/AD/GQ; only the fact that the call was made survives conversion")
 	}
 	return h, nil
@@ -778,8 +778,8 @@ func gtMatrixHeader(names []string, source string, store varstore.Store, q varst
 // The lines are replayed through ContigDef.OrigLine, which String() returns
 // unchanged -- so a length, an assembly, an md5 or anything else the source
 // declared survives rather than being rebuilt from the parts we happen to model.
-func addRecordedContigs(h *vcf.VcfHeader, store varstore.Store) bool {
-	ps, ok := store.(*varstore.ParquetVolume)
+func addRecordedContigs(h *vcf.VcfHeader, store gtstore.Store) bool {
+	ps, ok := store.(*gtstore.ParquetVolume)
 	if !ok {
 		return false // a VCF backend: its own header is not exposed for replay
 	}
@@ -821,7 +821,7 @@ func contigIDOf(line string) string {
 
 // queryContigs lists the distinct contigs a query's selectors name, in the order
 // first seen, or nothing when the query named no sites.
-func queryContigs(q varstore.Query) []string {
+func queryContigs(q gtstore.Query) []string {
 	seen := map[string]bool{}
 	var out []string
 	add := func(c string) {
@@ -857,9 +857,9 @@ func countAlleles(gt string) (called, alt int) {
 }
 
 // writeCallsList streams the distinct sample ids that had any row.
-func writeCallsList(out *bufio.Writer, store varstore.Store, q varstore.Query) (*tally, error) {
+func writeCallsList(out *bufio.Writer, store gtstore.Store, q gtstore.Query) (*tally, error) {
 	seen := map[string]bool{}
-	return streamCalls(store, q, func(c varstore.Call) error {
+	return streamCalls(store, q, func(c gtstore.Call) error {
 		if seen[c.SampleID] {
 			return nil
 		}
@@ -871,7 +871,7 @@ func writeCallsList(out *bufio.Writer, store varstore.Store, q varstore.Query) (
 
 // intOrDot renders a possibly-missing integer field.
 func intOrDot(v int32) string {
-	if v == varstore.Missing {
+	if v == gtstore.Missing {
 		return "."
 	}
 	return fmt.Sprint(v)
@@ -915,8 +915,8 @@ func tsvHeader() []string {
 // vouchedMinDP is the depth threshold a store's callable runs were built at, or 0
 // for a backend with no such threshold -- a VCF, where a call either carries its
 // own depth or none is knowable.
-func vouchedMinDP(store varstore.Store) int32 {
-	if ps, ok := store.(*varstore.ParquetVolume); ok {
+func vouchedMinDP(store gtstore.Store) int32 {
+	if ps, ok := store.(*gtstore.ParquetVolume); ok {
 		if p := ps.Provenance(); !p.NoCallable {
 			return p.MinDP
 		}
@@ -933,17 +933,17 @@ func vouchedMinDP(store varstore.Store) int32 {
 // file holds only ALT-carrying genotypes, so an all-reference GT identifies those
 // rows unambiguously. Anything else without a depth reports ".", because nothing
 // is known: putting a threshold there would assert a depth the data never had.
-func minDPOf(c varstore.Call, storeMinDP int32) string {
+func minDPOf(c gtstore.Call, storeMinDP int32) string {
 	// A floor the source itself vouched for outranks both: a gVCF block's MIN_DP is
 	// the minimum depth anywhere in the block, so it holds everywhere the row applies,
 	// where the recorded DP would be the depth at one base only.
 	if c.MinDP > 0 {
 		return fmt.Sprint(c.MinDP)
 	}
-	if c.DP != varstore.Missing {
+	if c.DP != gtstore.Missing {
 		return fmt.Sprint(c.DP)
 	}
-	if storeMinDP > 0 && c.GT == varstore.HomRefGT {
+	if storeMinDP > 0 && c.GT == gtstore.HomRefGT {
 		return fmt.Sprint(storeMinDP)
 	}
 	return "."
@@ -979,7 +979,7 @@ func init() {
 //
 // Not gated behind -v. An empty result that looks like a real negative is exactly
 // the case where a user needs telling.
-func warnEmptySelectors(cmd *cobra.Command, q varstore.Query, t *tally) {
+func warnEmptySelectors(cmd *cobra.Command, q gtstore.Query, t *tally) {
 	if t == nil || len(t.byLocus) > 0 {
 		return // something matched; per-selector attribution is not worth a second pass
 	}
@@ -1001,7 +1001,7 @@ func warnEmptySelectors(cmd *cobra.Command, q varstore.Query, t *tally) {
 //
 // Named loci get a line each, since that is the interactive case. Anything else
 // gets totals: at panel scale a paragraph per locus would BE the output.
-func reportQuery(cmd *cobra.Command, store varstore.Store, q varstore.Query, t *tally) {
+func reportQuery(cmd *cobra.Command, store gtstore.Store, q gtstore.Query, t *tally) {
 	out := cmd.ErrOrStderr()
 	if t == nil {
 		return
@@ -1014,18 +1014,18 @@ func reportQuery(cmd *cobra.Command, store varstore.Store, q varstore.Query, t *
 			// Allele frequency from the catalog, which knows the site even when
 			// nobody carries it -- so this stays meaningful at AC 0. Note these are
 			// the store's counts over ALL its samples, not the query's subset.
-			if ps, ok := store.(*varstore.ParquetVolume); ok {
+			if ps, ok := store.(*gtstore.ParquetVolume); ok {
 				if site, found, err := ps.Site(l); err == nil && found {
 					fmt.Fprintf(out, "  site        AC=%d AN=%d AF=%.6g  n_carriers=%d n_called=%d n_lowdp=%d\n",
 						site.AC, site.AN, site.AF(), site.NCarriers, site.NCalled, site.NLowDP)
 				}
 			}
-			n := t.byLocus[varstore.Locus{Chrom: l.Chrom, Pos: l.Pos, Ref: l.Ref, Alt: l.Alt}]
+			n := t.byLocus[gtstore.Locus{Chrom: l.Chrom, Pos: l.Pos, Ref: l.Ref, Alt: l.Alt}]
 			if n == [2]int{} {
 				// The store echoes its own contig spelling, which may differ from
 				// the one asked for, so fall back to matching canonically.
 				for k, v := range t.byLocus {
-					if varstore.SameLocus(k, l) {
+					if gtstore.SameLocus(k, l) {
 						n = v
 						break
 					}
@@ -1056,7 +1056,7 @@ func reportQuery(cmd *cobra.Command, store varstore.Store, q varstore.Query, t *
 // The count of what the gate excluded needs the same query run ungated, so it is
 // only offered when the query named loci: that is the interactive case, and at
 // panel scale a second full pass for a verbose line is not worth it.
-func reportGate(cmd *cobra.Command, store varstore.Store, q varstore.Query, t *tally) {
+func reportGate(cmd *cobra.Command, store gtstore.Store, q gtstore.Query, t *tally) {
 	if q.Gate.IsZero() {
 		return
 	}
@@ -1065,8 +1065,8 @@ func reportGate(cmd *cobra.Command, store varstore.Store, q varstore.Query, t *t
 
 	if len(q.Loci) > 0 && len(q.Loci) <= 32 {
 		ungated := q
-		ungated.Gate = varstore.Gate{}
-		if all, err := varstore.CollectCalls(store, ungated); err == nil {
+		ungated.Gate = gtstore.Gate{}
+		if all, err := gtstore.CollectCalls(store, ungated); err == nil {
 			if n := len(all) - rows; n > 0 {
 				fmt.Fprintf(out, "gate     excluded %d call(s)\n", n)
 			} else {

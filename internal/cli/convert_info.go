@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 	"github.com/compgenlab/cghts/vcf"
 )
 
@@ -31,12 +31,12 @@ import (
 // is an error rather than a silent no-op, because the usual cause is a
 // misremembered field name and the store would otherwise be quietly built
 // without it.
-func resolveInfoFields(h *vcf.VcfHeader, selectors []string) ([]varstore.InfoField, []string, error) {
+func resolveInfoFields(h *vcf.VcfHeader, selectors []string) ([]gtstore.InfoField, []string, error) {
 	if len(selectors) == 0 {
 		return nil, nil, nil
 	}
 	seen := map[string]bool{}
-	var out []varstore.InfoField
+	var out []gtstore.InfoField
 	var skipped []string
 
 	for _, raw := range selectors {
@@ -64,7 +64,7 @@ func resolveInfoFields(h *vcf.VcfHeader, selectors []string) ([]varstore.InfoFie
 						id, nearestInfo(h, id))
 				}
 				// InfoFieldFor stores a Number=. field as its verbatim text.
-				f := varstore.InfoFieldFor(id, def.Type, def.Number)
+				f := gtstore.InfoFieldFor(id, def.Type, def.Number)
 				// NAMING A FIELD IS A REQUEST; MATCHING ONE IS A SIDE EFFECT.
 				// An explicit --info AD that cannot be stored must fail, or the
 				// run quietly produces a store missing the column it was for.
@@ -74,7 +74,7 @@ func resolveInfoFields(h *vcf.VcfHeader, selectors []string) ([]varstore.InfoFie
 				//
 				// Refused one at a time and by name either way, because the
 				// remedy is to drop that field rather than abandon the run.
-				if err := varstore.ValidateInfo([]varstore.InfoField{f}); err != nil {
+				if err := gtstore.ValidateInfo([]gtstore.InfoField{f}); err != nil {
 					if glob {
 						skipped = append(skipped, fmt.Sprintf("%s (Number=%s)", id, def.Number))
 						continue
@@ -122,7 +122,7 @@ func nearestInfo(h *vcf.VcfHeader, want string) string {
 //
 // altIdx selects which value a Number=A field contributes, since one VCF record
 // with several ALTs becomes several site rows.
-func captureInfo(dst map[string]any, rec *vcf.VcfRecord, fields []varstore.InfoField, altIdx int) {
+func captureInfo(dst map[string]any, rec *vcf.VcfRecord, fields []gtstore.InfoField, altIdx int) {
 	clear(dst)
 	for _, f := range fields {
 		val, ok := rec.InfoValue(f.Name)
@@ -130,7 +130,7 @@ func captureInfo(dst map[string]any, rec *vcf.VcfRecord, fields []varstore.InfoF
 			continue
 		}
 		switch f.Type {
-		case varstore.InfoFlag:
+		case gtstore.InfoFlag:
 			// Presence is the value. A flag that is there is true; one that is
 			// not never reaches here, and false is what the store writes.
 			dst[f.Name] = true
@@ -154,19 +154,19 @@ func captureInfo(dst map[string]any, rec *vcf.VcfRecord, fields []varstore.InfoF
 			continue
 		}
 		switch f.Type {
-		case varstore.InfoInteger:
+		case gtstore.InfoInteger:
 			n, err := strconv.ParseInt(text, 10, 32)
 			if err != nil {
 				continue
 			}
 			dst[f.Name] = int32(n)
-		case varstore.InfoFloat:
+		case gtstore.InfoFloat:
 			x, err := strconv.ParseFloat(text, 64)
 			if err != nil {
 				continue
 			}
 			dst[f.Name] = x
-		case varstore.InfoString:
+		case gtstore.InfoString:
 			dst[f.Name] = text
 		}
 	}
