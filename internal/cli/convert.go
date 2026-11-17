@@ -807,11 +807,13 @@ func (c *parquetConverter) record(rec *vcf.VcfRecord) error {
 	if n > len(c.samples) {
 		n = len(c.samples)
 	}
+	// One reader per record: the FORMAT positions are resolved once, and each
+	// sample's fields are read out of the line without building a map of every
+	// FORMAT key per sample, which at tens of thousands of samples was most of
+	// what a conversion spent, much of it in the garbage collector.
+	sr := gtstore.NewSampleReader(rec)
 	for i := 0; i < n; i++ {
-		sf, err := gtstore.ReadSample(rec, i)
-		if err != nil {
-			return fmt.Errorf("%w (%s:%d)", err, rec.Chrom, rec.Pos)
-		}
+		sf := sr.Read(i)
 		c.nGenotypes++
 		if sf.DP != gtstore.Missing {
 			c.sawDP++
