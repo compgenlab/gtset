@@ -253,8 +253,10 @@ could answer off-catalog positions.
   --passing             skip filtered records
   --compression C       zstd (default), snappy, or none
   --row-group-size N    rows per parquet row group
-  -v, --verbose         report progress and a conversion summary on stderr,
-                        including which of DP/GQ/AD the input actually carries
+  -v, --verbose         report progress and a conversion summary on stderr:
+                        position, percentage of the contig, rate and an
+                        estimate about every 5 minutes (when the run has
+                        moved), and which of DP/GQ/AD the input carries
 
 Catalog runs are broken wherever a sample's depth crosses a band boundary, so
 each run's min_dp bounds the whole of it. A store keeps only that floor, not
@@ -612,6 +614,7 @@ func convertOne(cmd *cobra.Command, conv *parquetConverter, path string, canonic
 		return err
 	}
 	conv.perm = perm
+	conv.header = src.header
 
 	if conv.verbose {
 		note := ""
@@ -696,48 +699,190 @@ type parquetConverter struct {
 	seenChrom map[string]bool
 
 	// verbose reporting
-	verbose       bool
-	progress      io.Writer
-	nRecords      int64
-	nFiltered     int64
-	nMultiAllelic int64
-	nExtraRows    int64
-	nBlockAlts    int64
-	sawGQ         int64
-	sawAD         int64
-	nGenotypes    int64
-	nBelowDP      int64
-	nNoCall       int64
-	chroms        []string
+	verbose  bool
+	progress io.Writer
+	nRecords int64
+
+	// Progress reporting (-v). now is the clock, swappable in tests; the
+	// interval and threshold are constants (progressEvery, progressMinRecords,
+	// progressMinFrac). contigLen is the current chromosome's ##contig length, 0
+	// when the header does not declare one.
+	header         *vcf.VcfHeader
+	now            func() time.Time
+	started        time.Time
+	contigLen      int64
+	chromStartPos  int
+	chromStartTime time.Time
+	lastTick       time.Time
+	lastRecords    int64
+	lastTickPos    int
+	nFiltered      int64
+	nMultiAllelic  int64
+	nExtraRows     int64
+	nBlockAlts     int64
+	sawGQ          int64
+	sawAD          int64
+	nGenotypes     int64
+	nBelowDP       int64
+	nNoCall        int64
+	chroms         []string
+}
+
+// Progress is reported on a clock, not a record count: a 30,000-sample record
+// is milliseconds of work, so a fixed record interval meant hours between lines
+// -- and an exome chromosome with fewer records than the interval said nothing
+// at all, which in a cluster job's log is indistinguishable from a hang.
+//
+// A line also needs the run to have MOVED since the last one, so a five-minute
+// window spent on a dense stretch does not print a coordinate two bases past the
+// previous line. Fixed values, deliberately: a flag would be one more thing to
+// get wrong in a job script, and nothing about a store depends on them.
+const (
+	progressEvery      = 5 * time.Minute
+	progressMinRecords = 1_000
+	progressMinFrac    = 0.01 // of the contig's length, when the header gives one
+	progressCheckMask  = 63   // consult the clock every 64 records
+)
+
+// progressClock is the converter's clock; tests replace it to make the
+// five-minute interval pass between records.
+var progressClock = time.Now
+
+func (c *parquetConverter) clock() time.Time {
+	if c.now != nil {
+		return c.now()
+	}
+	return progressClock()
 }
 
 // note records a per-chromosome transition for the verbose summary.
 //
-// The first coordinate is reported because tick only speaks every 100,000 records,
-// so a contig holding fewer than that would otherwise name itself and then go
-// silent -- and on a per-chromosome callset that is most of them.
+// The first coordinate is reported because the periodic line only speaks every
+// few minutes, so a small contig would otherwise name itself and go silent.
 func (c *parquetConverter) note(chrom string, pos int) {
 	c.chroms = append(c.chroms, chrom)
+	c.contigLen = 0
+	if c.header != nil {
+		if d, ok := c.header.ContigDef(chrom); ok && d.Length > 0 {
+			c.contigLen = d.Length
+		}
+	}
+	now := c.clock()
+	if c.started.IsZero() {
+		c.started = now
+	}
+	c.chromStartPos, c.chromStartTime = pos, now
+	c.lastTick, c.lastRecords, c.lastTickPos = now, c.nRecords, pos
 	if c.verbose {
-		fmt.Fprintf(c.progress, "  %s: starting at %d\n", chrom, pos)
+		if c.contigLen > 0 {
+			fmt.Fprintf(c.progress, "  %s: starting at %s of %s\n", chrom, comma(int64(pos)), comma(c.contigLen))
+		} else {
+			fmt.Fprintf(c.progress, "  %s: starting at %s\n", chrom, comma(int64(pos)))
+		}
+		flushProgress(c.progress)
 	}
 }
 
-// tick emits periodic progress, which matters because a whole-chromosome
-// conversion streams for minutes with nothing else to show for it.
+// tick emits periodic progress.
 //
-// The coordinate is the point of it. A record count says the process is alive but
-// not how far along it is, and the two are not interchangeable on a sparse input:
-// counts advance at the rate variants are called, so a quiet centromere or a
-// callset thinned by --passing looks identical to a stall. A position is checkable
-// against the contig length, and it is what a run interrupted midway has to be
-// resumed or reasoned about from.
+// The coordinate is the point of it. A record count says the process is alive
+// but not how far along it is, and on a sparse input counts advance at the rate
+// variants are called, so a quiet centromere looks like a stall. A position is
+// checkable against the contig length, which is what the percentage and the
+// estimate are computed from.
 func (c *parquetConverter) tick(pos int) {
-	const every = 100_000
-	if c.verbose && c.nRecords%every == 0 {
-		fmt.Fprintf(c.progress, "  %s:%d  %d records, %d calls so far\n",
-			c.curChrom, pos, c.nRecords, c.w.NCalls)
+	if !c.verbose || c.nRecords&progressCheckMask != 0 {
+		return
 	}
+	now := c.clock()
+	if now.Sub(c.lastTick) < progressEvery {
+		return
+	}
+	moved := c.nRecords-c.lastRecords >= progressMinRecords
+	if c.contigLen > 0 && float64(pos-c.lastTickPos) >= progressMinFrac*float64(c.contigLen) {
+		moved = true
+	}
+	if !moved {
+		return
+	}
+	c.lastTick, c.lastRecords, c.lastTickPos = now, c.nRecords, pos
+	fmt.Fprintln(c.progress, c.progressLine(pos, now))
+	flushProgress(c.progress)
+}
+
+// progressLine is one progress report, e.g.
+//
+//	chr2:121,450,332 / 242,193,529 (50.1%)  records 61,204 (34/s)  genotypes 1.84e+09 (1.0M/s)  calls 2,310,442  elapsed 30m0s  eta ~30m
+func (c *parquetConverter) progressLine(pos int, now time.Time) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "  %s:%s", c.curChrom, comma(int64(pos)))
+	if c.contigLen > 0 {
+		fmt.Fprintf(&b, " / %s (%.1f%%)", comma(c.contigLen), 100*float64(pos)/float64(c.contigLen))
+	}
+	elapsed := now.Sub(c.started)
+	secs := elapsed.Seconds()
+	fmt.Fprintf(&b, "  records %s (%s/s)  genotypes %s (%s/s)  calls %s  elapsed %s",
+		comma(c.nRecords), rate(float64(c.nRecords), secs),
+		siCount(float64(c.nGenotypes)), rate(float64(c.nGenotypes), secs),
+		comma(c.w.NCalls), elapsed.Round(time.Second))
+	// The estimate covers this chromosome only, from how far it has come since
+	// it started: an input holding several chromosomes cannot be estimated as a
+	// whole without knowing which ones are still to come.
+	if done := pos - c.chromStartPos; c.contigLen > 0 && done > 0 && int64(pos) < c.contigLen {
+		spent := now.Sub(c.chromStartTime)
+		left := time.Duration(float64(spent) * float64(c.contigLen-int64(pos)) / float64(done))
+		fmt.Fprintf(&b, "  eta ~%s", roughDuration(left))
+	}
+	return b.String()
+}
+
+// flushProgress pushes a progress line out now. os.Stderr is unbuffered, but a
+// caller may hand the converter a buffered writer or a file, and a cluster job's
+// log is only useful if the line is in it while the job is still running.
+func flushProgress(w io.Writer) {
+	switch f := w.(type) {
+	case interface{ Flush() error }:
+		_ = f.Flush()
+	case interface{ Sync() error }:
+		_ = f.Sync()
+	}
+}
+
+func rate(n, secs float64) string {
+	if secs <= 0 {
+		return "-"
+	}
+	return siCount(n / secs)
+}
+
+// siCount renders a count compactly: 912, 34.5k, 1.0M, 1.84G.
+func siCount(n float64) string {
+	switch {
+	case n >= 1e9:
+		return fmt.Sprintf("%.2fG", n/1e9)
+	case n >= 1e6:
+		return fmt.Sprintf("%.1fM", n/1e6)
+	case n >= 1e4:
+		return fmt.Sprintf("%.1fk", n/1e3)
+	default:
+		return fmt.Sprintf("%.0f", n)
+	}
+}
+
+// roughDuration rounds an estimate to the precision it deserves.
+func roughDuration(d time.Duration) string {
+	switch {
+	case d >= 2*time.Hour:
+		d = d.Round(time.Hour / 4)
+	case d >= time.Hour:
+		d = d.Round(5 * time.Minute)
+	case d >= time.Minute:
+		d = d.Round(time.Minute)
+	default:
+		return "<1m"
+	}
+	// "48m0s" and "2h15m0s" claim a precision the estimate does not have.
+	return strings.TrimSuffix(d.String(), "0s")
 }
 
 // record splits one VCF record into per-allele calls, a catalog entry per
@@ -991,6 +1136,10 @@ func (c *parquetConverter) report(out io.Writer, base string, elapsed time.Durat
 	}
 	fmt.Fprintf(out, "  chromosomes           %s\n", strings.Join(c.chroms, ", "))
 	fmt.Fprintf(out, "  genotypes examined    %d\n", c.nGenotypes)
+	if secs := elapsed.Seconds(); secs > 0 {
+		fmt.Fprintf(out, "  elapsed               %s  (%s records/s, %s genotypes/s)\n",
+			elapsed.Round(time.Second), siCount(float64(c.nRecords)/secs), siCount(float64(c.nGenotypes)/secs))
+	}
 
 	fmt.Fprintf(out, "\nfields present (a gate can only act on a field the data has)\n")
 	for _, f := range []struct {

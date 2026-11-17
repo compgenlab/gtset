@@ -26,11 +26,24 @@ real; `gtstore <command> --help` has the full flags, and
 
 ```bash
 for c in chr{1..22} chrX chrY; do
-  gtstore convert --out cohort/$c \
+  gtstore convert -v --out cohort/$c \
       --meta-dataset "MyCohort release 3" --meta-reference GRCh38 \
-      calls/$c.vcf.gz
+      calls/$c.vcf.gz 2> cohort/$c.log
 done
 ```
+
+With `-v`, a conversion reports on stderr about every five minutes (when it
+has moved), so a cluster job's log shows where it is and roughly how long is
+left:
+
+```
+  chr2: starting at 10,177 of 242,193,529
+  chr2:121,450,332 / 242,193,529 (50.1%)  records 61,204 (34/s)  genotypes 1.84G (1.0M/s)  calls 2,310,442  elapsed 30m0s  eta ~30m
+```
+
+The estimate assumes the rest of the chromosome is as dense as what came
+before, so treat it as rough. The summary at the end gives the overall rate,
+which is the number to plan the next batch with.
 
 Each chromosome becomes a **volume**: a directory holding the `calls`,
 `catalog` and `catalog_runs` tables and a `manifest.json.gz` written last, so a
