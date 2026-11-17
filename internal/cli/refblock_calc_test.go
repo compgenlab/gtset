@@ -23,12 +23,14 @@ const refBlocksPVCF = `##fileformat=VCFv4.2
 chr1	700	.	A	G	50	PASS	.	GT:DP	0/1:40	0/0:30
 `
 
-// S1's gVCF, built to hit each rule once. Expected spans, at --min-dp 10, bands
-// 10,20,50 and --max-gap 10:
+// S1's gVCF, built to hit each rule once. Expected spans, at --min-dp 10 and
+// bands 10,20,50:
 //
-//	chr1 100-299 @12   two band-10 blocks that abut
-//	chr1 300-499 @30   a band change opens it; a gap of exactly 10 is bridged
-//	chr1 511-699 @40   a gap of 11 is not; a 3x block inside is dropped and bridged
+//	chr1 100-299 @12   two band-10 blocks that abut merge
+//	chr1 300-399 @30   a band change opens it ...
+//	chr1 410-499 @35   ... and a 10-base unreported gap keeps it apart
+//	chr1 511-599 @40   a 3x block is dropped, and the gap it leaves --
+//	chr1 605-699 @40   five bases -- is never bridged
 //	chr1 701-799 @40   the sample's own SNV at 700 is never bridged
 //	chr2 100-199 @25   a second chromosome
 func refBlocksGVCF(sample string) string {
@@ -98,8 +100,10 @@ func TestRefBlocksCoarsensAGvcf(t *testing.T) {
 	m, spans := fragmentSpans(t, out)
 	want := []string{
 		"chr1 100-299 @12",
-		"chr1 300-499 @30",
-		"chr1 511-699 @40",
+		"chr1 300-399 @30",
+		"chr1 410-499 @35",
+		"chr1 511-599 @40",
+		"chr1 605-699 @40",
 		"chr1 701-799 @40",
 		"chr2 100-199 @25",
 	}
@@ -107,8 +111,8 @@ func TestRefBlocksCoarsensAGvcf(t *testing.T) {
 		t.Errorf("spans:\n got %v\nwant %v", spans, want)
 	}
 	// Settings come from the store unless named, so the fragment can be attached.
-	if m.SampleID != "S1" || m.MinDP != 10 || !reflect.DeepEqual(m.DepthBands, []int32{10, 20, 50}) || m.MaxGap != 10 {
-		t.Errorf("meta = %+v, want S1 at the store's min-dp 10 and bands 10,20,50, max-gap 10", m)
+	if m.SampleID != "S1" || m.MinDP != 10 || !reflect.DeepEqual(m.DepthBands, []int32{10, 20, 50}) || m.MaxGap != 0 {
+		t.Errorf("meta = %+v, want S1 at the store's min-dp 10 and bands 10,20,50, no gap tolerance", m)
 	}
 }
 

@@ -189,11 +189,7 @@ func summarizeMultiVolume(out io.Writer, s *varstore.VarStore, path string) erro
 		fmt.Fprintf(out, "  depth bands   %v (%s)\n", man.Params.DepthBands, how)
 	}
 	if man.Params.RefBlocks {
-		fmt.Fprintf(out, "  ref blocks    yes")
-		if man.Params.MaxGap > 0 {
-			fmt.Fprintf(out, ", merged across gaps up to %d bp", man.Params.MaxGap)
-		}
-		fmt.Fprintln(out)
+		fmt.Fprintf(out, "  ref blocks    yes%s\n", gapWarning(man.Params.MaxGap))
 		writeArchiveRefBlockSamples(out, s, man)
 	} else {
 		fmt.Fprintf(out, "  ref blocks    no (answers only for variants in the catalog)\n")
@@ -275,11 +271,7 @@ func summarizeStore(out *bufio.Writer, errOut interface{ Write([]byte) (int, err
 		}
 	}
 	if p.RefBlocks {
-		fmt.Fprintf(out, "ref blocks yes  (off-catalog positions are answerable)")
-		if m.Params.MaxGap > 0 {
-			fmt.Fprintf(out, ", merged across gaps up to %d bp", m.Params.MaxGap)
-		}
-		fmt.Fprintln(out)
+		fmt.Fprintf(out, "ref blocks yes  (off-catalog positions are answerable)%s\n", gapWarning(m.Params.MaxGap))
 		attached, known := s.RefBlockSamples()
 		fmt.Fprintf(out, "           %s\n", refBlockCoverage(attached, known, samples))
 	} else {
@@ -535,4 +527,17 @@ func writeArchiveRefBlockSamples(out io.Writer, s *varstore.VarStore, man *varst
 		fmt.Fprintf(out, "                  %-16s %s\n", v.Name,
 			refBlockCoverage(list, v.RefBlockSamples != nil, man.Samples))
 	}
+}
+
+// gapWarning flags a store whose blocks were attached by a version that merged
+// them across gaps: such a block can answer 0/0 at bases its gVCF put below the
+// gate or never reported. Current versions never write one; this exists so an
+// older store says so instead of reading as sound.
+func gapWarning(maxGap int32) string {
+	if maxGap <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" -- WARNING: merged across gaps of up to %d bp by an older version, so a "+
+		"position in such a gap can read 0/0 without having been assayed; rebuild with "+
+		"refblock-calc and refblock-attach --rebuild", maxGap)
 }
