@@ -6,7 +6,7 @@ import (
 	"runtime/pprof"
 	"strings"
 
-	"github.com/compgenlab/varstore/internal/cli"
+	"github.com/compgenlab/gtstore/internal/cli"
 )
 
 // profileFlag is intercepted here rather than declared on the root command,
@@ -25,7 +25,7 @@ func main() {
 func run() int {
 	args, path := takeProfileFlag(os.Args)
 	// os.Args is provenance: buildinfo.CommandLine joins it into the ##...Command
-	// header of every VCF, the @PG CL: of every BAM and cgkit.command in every
+	// header of every VCF, the @PG CL: of every BAM and gtstore.command in every
 	// store. It is rewritten rather than left alone so those records describe a
 	// reproducible invocation instead of one carrying a profiling flag -- and the
 	// program name is kept, which the previous re-slicing dropped, stamping
@@ -62,7 +62,7 @@ func run() int {
 // remainder along with the filename.
 //
 // It is scanned for anywhere rather than only at args[1]: the positional form
-// meant "varstore summary --profile=cpu.prof cohort" -- the order anyone who has
+// meant "gtstore summary --profile=cpu.prof cohort" -- the order anyone who has
 // used a CLI would reach for -- died with "unknown flag" instead of profiling.
 // Everything after a bare "--" is a positional argument by convention and is
 // left alone.

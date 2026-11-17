@@ -4,7 +4,7 @@
 // It exists as a leaf package, rather than as a helper inside internal/cmd,
 // for two reasons. The command packages need it and cannot import cmd, since
 // root.go imports them. And the blank import below is the only thing that makes
-// s3:// work anywhere in varstore -- putting it in main.go would leave it unlinked
+// s3:// work anywhere in gtstore -- putting it in main.go would leave it unlinked
 // during `go test ./internal/...`, so a test asserting the "no transport
 // registered (registered: s3)" message would pass while the shipped binary
 // said something else. Here, that test is the guard on the import.
@@ -15,7 +15,7 @@ import (
 
 	"github.com/compgenlab/cghts/iosource"
 
-	// Registers the s3:// transport. This is why varstore links the AWS SDK.
+	// Registers the s3:// transport. This is why gtstore links the AWS SDK.
 	// iosource.Register panics on a duplicate scheme, but Go runs a package's
 	// init once however many times it is imported, so additional blank imports
 	// elsewhere are harmless and need no guard.
@@ -24,7 +24,7 @@ import (
 
 // IsRemote reports whether a value names something other than a local file.
 //
-// It wraps iosource so that varstore classifies a locator exactly the way the
+// It wraps iosource so that gtstore classifies a locator exactly the way the
 // library will dispatch it. The rule is not obvious -- a single character
 // before "://" is a Windows drive letter, not a scheme -- and a classifier that
 // disagreed with the opener by one case would not fail loudly. It would decide
@@ -36,7 +36,7 @@ func Schemes() []string { return append([]string{"http", "https"}, iosource.Sche
 
 // CheckLocalOutput rejects a remote locator given as an output destination.
 //
-// varstore reads from anywhere and writes locally. Writing to an object store is
+// gtstore reads from anywhere and writes locally. Writing to an object store is
 // not a small extension of this: there is no writer-side equivalent of a byte
 // source, and a multipart upload is a different shape of thing from an
 // io.Writer that a BAM or Parquet writer can stream into. Refusing early and by
@@ -53,6 +53,6 @@ func CheckLocalOutput(flag, value string) error {
 	if !IsRemote(value) {
 		return nil
 	}
-	return fmt.Errorf("%s: %q is a remote locator; varstore writes output to local files only "+
+	return fmt.Errorf("%s: %q is a remote locator; gtstore writes output to local files only "+
 		"(or - for stdout)", flag, value)
 }

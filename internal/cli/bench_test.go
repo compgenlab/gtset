@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 )
 
 // Benchmarks for genotype queries, over a corpus this file GENERATES rather than a
@@ -26,10 +26,10 @@ import (
 // single-locus query -- the reason the Store API collapsed to one Calls method,
 // and so far an arithmetic argument rather than a measurement. Second, how the
 // Parquet store compares with querying the plain VCF it came from, which
-// docs/varstore convert.md currently states outright has never been measured.
+// docs/gtstore convert.md currently states outright has never been measured.
 //
 // Wall time and row counts only. Bytes read and row groups decoded would be the
-// more durable numbers, but they need a counter inside varstore, which lives in
+// more durable numbers, but they need a counter inside gtstore, which lives in
 // cghts.
 
 // runVcfTB is runVcf for benchmarks, which get a testing.B rather than a T.
@@ -117,16 +117,16 @@ func indexOf(ss []string, s string) int {
 }
 
 // panelOf picks nTargets loci spread across the callset, as a variant panel is.
-func panelOf(tb testing.TB, storeBase string, nTargets int) []varstore.Locus {
+func panelOf(tb testing.TB, storeBase string, nTargets int) []gtstore.Locus {
 	tb.Helper()
-	s, err := varstore.OpenParquet(storeBase)
+	s, err := gtstore.OpenParquet(storeBase)
 	if err != nil {
 		tb.Fatal(err)
 	}
 	defer s.Close()
 
-	var all []varstore.Locus
-	if err := s.Sites(func(site varstore.Site) bool {
+	var all []gtstore.Locus
+	if err := s.Sites(func(site gtstore.Site) bool {
 		all = append(all, site.Locus())
 		return true
 	}); err != nil {
@@ -136,7 +136,7 @@ func panelOf(tb testing.TB, storeBase string, nTargets int) []varstore.Locus {
 		nTargets = len(all)
 	}
 	step := len(all) / nTargets
-	out := make([]varstore.Locus, 0, nTargets)
+	out := make([]gtstore.Locus, 0, nTargets)
 	for i := 0; i < nTargets; i++ {
 		out = append(out, all[i*step])
 	}
@@ -153,7 +153,7 @@ func panelOf(tb testing.TB, storeBase string, nTargets int) []varstore.Locus {
 // here is small enough to produce several.
 func benchSizes() (nSamples, nSites, rowGroup int) {
 	nSamples, nSites, rowGroup = 200, 20000, 10000
-	if os.Getenv("CGKIT_BENCH_BIG") != "" {
+	if os.Getenv("GTSTORE_BENCH_BIG") != "" {
 		nSamples, nSites = 500, 50000
 	}
 	atoiEnv := func(key string, into *int) {
@@ -163,9 +163,9 @@ func benchSizes() (nSamples, nSites, rowGroup int) {
 			}
 		}
 	}
-	atoiEnv("CGKIT_BENCH_SAMPLES", &nSamples)
-	atoiEnv("CGKIT_BENCH_SITES", &nSites)
-	atoiEnv("CGKIT_BENCH_ROWGROUP", &rowGroup)
+	atoiEnv("GTSTORE_BENCH_SAMPLES", &nSamples)
+	atoiEnv("GTSTORE_BENCH_SITES", &nSites)
+	atoiEnv("GTSTORE_BENCH_ROWGROUP", &rowGroup)
 	return nSamples, nSites, rowGroup
 }
 
@@ -175,7 +175,7 @@ func BenchmarkQueryPanel(b *testing.B) {
 	nSamples, nSites, rowGroup := benchSizes()
 	_, storeBase := genCallset(b, nSamples, nSites, rowGroup, 1)
 
-	store, err := varstore.OpenParquet(storeBase)
+	store, err := gtstore.OpenParquet(storeBase)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func BenchmarkQueryPanel(b *testing.B) {
 
 		b.Run(fmt.Sprintf("bulk/%d", nTargets), func(b *testing.B) {
 			for b.Loop() {
-				rows, err := varstore.CollectCalls(store, varstore.Query{Loci: panel})
+				rows, err := gtstore.CollectCalls(store, gtstore.Query{Loci: panel})
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -198,8 +198,8 @@ func BenchmarkQueryPanel(b *testing.B) {
 			for b.Loop() {
 				n := 0
 				for _, l := range panel {
-					rows, err := varstore.CollectCalls(store,
-						varstore.Query{Loci: []varstore.Locus{l}})
+					rows, err := gtstore.CollectCalls(store,
+						gtstore.Query{Loci: []gtstore.Locus{l}})
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -211,18 +211,18 @@ func BenchmarkQueryPanel(b *testing.B) {
 	}
 }
 
-// BenchmarkStoreVsVcf is the comparison docs/varstore convert.md says has never been
+// BenchmarkStoreVsVcf is the comparison docs/gtstore convert.md says has never been
 // made: the same panel query against the store and against the VCF it came from.
 func BenchmarkStoreVsVcf(b *testing.B) {
 	nSamples, nSites, rowGroup := benchSizes()
 	vcfPath, storeBase := genCallset(b, nSamples, nSites, rowGroup, 1)
 
-	store, err := varstore.OpenParquet(storeBase)
+	store, err := gtstore.OpenParquet(storeBase)
 	if err != nil {
 		b.Fatal(err)
 	}
 	defer store.Close()
-	plain, err := varstore.OpenVcf(vcfPath)
+	plain, err := gtstore.OpenVcf(vcfPath)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func BenchmarkStoreVsVcf(b *testing.B) {
 	// format. With an index the VCF backend can seek.
 	gzPath := vcfPath + ".gz"
 	bgzipIndex(b, vcfPath, gzPath)
-	indexed, err := varstore.OpenVcf(gzPath)
+	indexed, err := gtstore.OpenVcf(gzPath)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -246,14 +246,14 @@ func BenchmarkStoreVsVcf(b *testing.B) {
 
 	for _, nTargets := range []int{1, 100} {
 		panel := panelOf(b, storeBase, nTargets)
-		q := varstore.Query{Loci: panel}
+		q := gtstore.Query{Loci: panel}
 		for _, tc := range []struct {
 			name string
-			s    varstore.Store
+			s    gtstore.Store
 		}{{"store", store}, {"vcf", plain}, {"vcf-indexed", indexed}} {
 			b.Run(fmt.Sprintf("%s/%d", tc.name, nTargets), func(b *testing.B) {
 				for b.Loop() {
-					if _, err := varstore.CollectCalls(tc.s, q); err != nil {
+					if _, err := gtstore.CollectCalls(tc.s, q); err != nil {
 						b.Fatal(err)
 					}
 				}

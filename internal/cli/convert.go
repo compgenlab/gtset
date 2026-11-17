@@ -8,33 +8,33 @@ import (
 	"strings"
 	"time"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 	// Registers the s3 sink, so --out may name a bucket. A blank import:
 	// nothing here calls it, and without it s3:// is refused as an unknown
 	// scheme rather than written.
-	_ "github.com/compgenlab/cghts/varstore/sinks3"
+	_ "github.com/compgenlab/cghts/gtstore/sinks3"
 	"github.com/compgenlab/cghts/vcf"
-	"github.com/compgenlab/varstore/internal/buildinfo"
+	"github.com/compgenlab/gtstore/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
 var (
-	vcfToVarstoreOut          string
-	vcfToVarstoreMinDP        int
-	vcfToVarstoreNoCallable   bool
-	vcfToVarstoreCompression  string
-	vcfToVarstoreRowGroupSize int
-	vcfToVarstoreForce        bool
-	vcfToVarstoreInfo         []string
-	vcfToVarstoreBands        []int
-	vcfToVarstoreDepthRatio   float64
-	vcfToVarstoreShardSites   int
-	vcfToVarstoreFormat       []string
+	vcfToGtstoreOut          string
+	vcfToGtstoreMinDP        int
+	vcfToGtstoreNoCallable   bool
+	vcfToGtstoreCompression  string
+	vcfToGtstoreRowGroupSize int
+	vcfToGtstoreForce        bool
+	vcfToGtstoreInfo         []string
+	vcfToGtstoreBands        []int
+	vcfToGtstoreDepthRatio   float64
+	vcfToGtstoreShardSites   int
+	vcfToGtstoreFormat       []string
 
 	// One string per reserved key, keyed by the key itself, plus the generic
 	// --meta pairs. Both feed one map; see collectMeta.
-	vcfToVarstoreMetaNamed = map[string]*string{}
-	vcfToVarstoreMetaPairs []string
+	vcfToGtstoreMetaNamed = map[string]*string{}
+	vcfToGtstoreMetaPairs []string
 )
 
 // depthBandsFor resolves the band boundaries a conversion breaks catalog runs at,
@@ -55,31 +55,31 @@ var (
 func depthBandsFor(cmd *cobra.Command) ([]int32, float64, error) {
 	// Changed, not merely non-empty, is what makes the list explicit; length
 	// alone is the fallback for callers that set the variable directly.
-	if cmd.Flags().Changed("depth-bands") || len(vcfToVarstoreBands) > 0 {
+	if cmd.Flags().Changed("depth-bands") || len(vcfToGtstoreBands) > 0 {
 		if cmd.Flags().Changed("depth-ratio") {
 			return nil, 0, fmt.Errorf("--depth-bands and --depth-ratio are alternatives; give one")
 		}
-		bands := make([]int32, 0, len(vcfToVarstoreBands))
-		for _, b := range vcfToVarstoreBands {
+		bands := make([]int32, 0, len(vcfToGtstoreBands))
+		for _, b := range vcfToGtstoreBands {
 			bands = append(bands, int32(b))
 		}
-		if err := varstore.ValidateDepthBands(bands); err != nil {
+		if err := gtstore.ValidateDepthBands(bands); err != nil {
 			return nil, 0, fmt.Errorf("--depth-bands: %w", err)
 		}
 		return bands, 0, nil
 	}
-	if vcfToVarstoreDepthRatio == 0 {
+	if vcfToGtstoreDepthRatio == 0 {
 		return nil, 0, nil
 	}
-	start := int32(vcfToVarstoreMinDP)
+	start := int32(vcfToGtstoreMinDP)
 	if start < 1 {
 		start = 1
 	}
-	bands, err := varstore.GeometricDepthBands(start, vcfToVarstoreDepthRatio, varstore.MaxDepthBand)
+	bands, err := gtstore.GeometricDepthBands(start, vcfToGtstoreDepthRatio, gtstore.MaxDepthBand)
 	if err != nil {
 		return nil, 0, fmt.Errorf("--depth-ratio: %w", err)
 	}
-	return bands, vcfToVarstoreDepthRatio, nil
+	return bands, vcfToGtstoreDepthRatio, nil
 }
 
 // collectMeta folds the named --meta-<key> flags and the generic --meta
@@ -99,7 +99,7 @@ func collectMeta() (map[string]string, error) {
 		// caller. Doing it in the pre-flight means the run dies before
 		// EnsureStoreDir, so a typo leaves nothing behind, and the message can
 		// name the flag that carried the key -- which the library cannot.
-		if !varstore.ValidMetaKey(key) {
+		if !gtstore.ValidMetaKey(key) {
 			return fmt.Errorf("%s: invalid metadata key %q: keys must be non-empty and use "+
 				"only lowercase letters, digits, underscore and hyphen", via, key)
 		}
@@ -112,14 +112,14 @@ func collectMeta() (map[string]string, error) {
 		return nil
 	}
 
-	for _, key := range varstore.ReservedMetaKeys {
-		if p := vcfToVarstoreMetaNamed[key]; p != nil && *p != "" {
+	for _, key := range gtstore.ReservedMetaKeys {
+		if p := vcfToGtstoreMetaNamed[key]; p != nil && *p != "" {
 			if err := set(key, *p, "--meta-"+key); err != nil {
 				return nil, err
 			}
 		}
 	}
-	for _, pair := range vcfToVarstoreMetaPairs {
+	for _, pair := range vcfToGtstoreMetaPairs {
 		key, val, ok := strings.Cut(pair, "=")
 		if !ok {
 			return nil, fmt.Errorf("--meta %q: expected KEY=VALUE", pair)
@@ -142,7 +142,7 @@ func collectMeta() (map[string]string, error) {
 var convertCmd = &cobra.Command{
 	Annotations: map[string]string{"since": "v0.1.0"},
 	Use:         "convert <input.vcf> [input2.vcf ...]",
-	Short:       "Convert a VCF to a varstore",
+	Short:       "Convert a VCF to a gtstore",
 	Long: `Convert a VCF into a VARSTORE: a columnar genotype store that keeps only the
 alternate-allele calls, along with enough context to still tell a
 confidently-called reference apart from a position that was never assayed.
@@ -163,12 +163,12 @@ position statistics stay tighter, and a locus lookup then skips more of the
 file. Measured on a two-chromosome store, supplying them out of order cost
 about 1.8x on a locus query (166ms against 298ms).
 
-The name is the STORE rather than its encoding. Parquet is how a varstore is
+The name is the STORE rather than its encoding. Parquet is how a gtstore is
 written today, behind an interface this package owns, and the design keeps room
 for another backend -- so naming the command after the format would be a promise
 about something deliberately left changeable. What this writes is one VOLUME;
-several volumes, disjoint by chromosome, then form a single varstore queried as
-one -- see varstore create.
+several volumes, disjoint by chromosome, then form a single gtstore queried as
+one -- see gtstore create.
 
 The store is written to --out, and its tables form one inseparable set:
 
@@ -182,7 +182,7 @@ A store is a directory, created if needed; a trailing "/" on --out is optional
 and means nothing. The tables are only meaningful together, so this keeps the
 set as one thing to copy, move or delete, and it is the layout every Parquet
 tool expects -- DuckDB or pyarrow can be pointed straight at a table.
-varstore query accepts the directory, with or without the slash, or any table
+gtstore query accepts the directory, with or without the slash, or any table
 path within it.
 
 The manifest is what makes a store readable rather than merely present. It is
@@ -193,7 +193,7 @@ much of the input went into them, and a store that covered three of twenty-two
 chromosomes answers "not assayed" for the rest, exactly as a complete store
 answers for a position the source never reported. So the manifest also records
 what was written: per-chromosome site and call counts, per-table row counts,
-the sample roster. Read it with varstore summary.
+the sample roster. Read it with gtstore summary.
 
 A store written by an older converter has no manifest and must be re-converted.
 
@@ -259,7 +259,7 @@ could answer off-catalog positions.
 Catalog runs are broken wherever a sample's depth crosses a band boundary, so
 each run's min_dp bounds the whole of it. A store keeps only that floor, not
 the depth at each site, so the boundaries decide which query gates are exact:
-varstore query --hom-ref at a --min-dp on a boundary (or at or below the
+gtstore query --hom-ref at a --min-dp on a boundary (or at or below the
 conversion --min-dp) returns exactly the reference calls the source VCF would,
 and a gate inside a band returns a subset of them -- never a reference call the
 source lacks. By default the boundaries are geometric, min-dp x 1.5^k
@@ -326,15 +326,15 @@ mean something else.
   --meta-description TEXT   free text
   --meta KEY=VALUE          anything else (repeatable)
 
-Values are recorded verbatim -- varstore cannot know whether "GRCh38" is true, and
+Values are recorded verbatim -- gtstore cannot know whether "GRCh38" is true, and
 normalizing it would turn your claim into its own. Keys are lowercase
 [a-z0-9_-]. A key given twice, by either spelling, is an error rather than
 last-wins: which of two conflicting claims gets recorded should not depend on
-the order the flags were typed. varstore summary prints all of it, and
+the order the flags were typed. gtstore summary prints all of it, and
 --format json emits it verbatim for jq.`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if vcfToVarstoreOut == "" {
+		if vcfToGtstoreOut == "" {
 			return fmt.Errorf("you must specify an output store directory with --out")
 		}
 		// A store may be written to an object store as well as to a directory,
@@ -342,17 +342,17 @@ the order the flags were typed. varstore summary prints all of it, and
 		// refused for being remote. An unregistered scheme is named as such:
 		// left to the writer it would surface as a not-found against a path
 		// nobody typed.
-		if !varstore.CanWrite(vcfToVarstoreOut) {
+		if !gtstore.CanWrite(vcfToGtstoreOut) {
 			return fmt.Errorf("--out: cannot write a store to %q; this build writes to a directory%s",
-				vcfToVarstoreOut, writableSchemes())
+				vcfToGtstoreOut, writableSchemes())
 		}
-		if vcfToVarstoreMinDP < 0 {
+		if vcfToGtstoreMinDP < 0 {
 			return fmt.Errorf("--min-dp must not be negative")
 		}
-		if vcfToVarstoreRowGroupSize <= 0 {
+		if vcfToGtstoreRowGroupSize <= 0 {
 			return fmt.Errorf("--row-group-size must be a positive number")
 		}
-		codec, err := varstore.CodecFor(vcfToVarstoreCompression)
+		codec, err := gtstore.CodecFor(vcfToGtstoreCompression)
 		if err != nil {
 			return err
 		}
@@ -374,12 +374,12 @@ the order the flags were typed. varstore summary prints all of it, and
 		// Resolved from the header while it is still open, and BEFORE the
 		// overwrite check below: a misspelled --info must not be the thing that
 		// discovers itself after the previous store has been truncated.
-		infoFields, infoSkipped, err := resolveInfoFields(first.header, vcfToVarstoreInfo)
+		infoFields, infoSkipped, err := resolveInfoFields(first.header, vcfToGtstoreInfo)
 		if err != nil {
 			first.close()
 			return err
 		}
-		formatFields, formatSkipped, err := resolveFormatFields(first.header, vcfToVarstoreFormat)
+		formatFields, formatSkipped, err := resolveFormatFields(first.header, vcfToGtstoreFormat)
 		if err != nil {
 			first.close()
 			return err
@@ -406,7 +406,7 @@ the order the flags were typed. varstore summary prints all of it, and
 		// The destination, opened once and reused: the overwrite check and the
 		// writer must agree about where the store is going, and opening it
 		// twice is how they would come to differ.
-		sink, err := varstore.OpenSink(vcfToVarstoreOut)
+		sink, err := gtstore.OpenSink(vcfToGtstoreOut)
 		if err != nil {
 			return err
 		}
@@ -417,7 +417,7 @@ the order the flags were typed. varstore summary prints all of it, and
 		// Asked of the SINK the writer will use, not of the base again: opening
 		// the destination twice is how the check and the writer come to
 		// disagree about where the store is going.
-		if err := varstore.CheckStoreTargetIn(sink, vcfToVarstoreForce); err != nil {
+		if err := gtstore.CheckStoreTargetIn(sink, vcfToGtstoreForce); err != nil {
 			return err
 		}
 
@@ -442,13 +442,13 @@ the order the flags were typed. varstore summary prints all of it, and
 		// the shard they belong to, before that shard closes.
 		var conv *parquetConverter
 
-		w, err := varstore.NewWriter(vcfToVarstoreOut, varstore.WriterOpts{
+		w, err := gtstore.NewWriter(vcfToGtstoreOut, gtstore.WriterOpts{
 			Sink:         sink,
 			Codec:        codec,
-			RowGroupSize: int64(vcfToVarstoreRowGroupSize),
+			RowGroupSize: int64(vcfToGtstoreRowGroupSize),
 			Samples:      samples,
-			MinDP:        int32(vcfToVarstoreMinDP),
-			NoCallable:   vcfToVarstoreNoCallable,
+			MinDP:        int32(vcfToGtstoreMinDP),
+			NoCallable:   vcfToGtstoreNoCallable,
 			Program:      buildinfo.Program(),
 			Command:      buildinfo.CommandLine(),
 			Sources:      args,
@@ -458,7 +458,7 @@ the order the flags were typed. varstore summary prints all of it, and
 			Format:       formatFields,
 			DepthBands:   bands,
 			DepthRatio:   depthRatio,
-			ShardSites:   int64(vcfToVarstoreShardSites),
+			ShardSites:   int64(vcfToGtstoreShardSites),
 			// A run must lie wholly inside one shard, or every locus it covers
 			// in an earlier one reads as never assayed rather than reference.
 			// The converter already breaks runs at chromosome changes and at
@@ -478,8 +478,8 @@ the order the flags were typed. varstore summary prints all of it, and
 		conv = &parquetConverter{
 			w:          w,
 			samples:    samples,
-			minDP:      int32(vcfToVarstoreMinDP),
-			noCallable: vcfToVarstoreNoCallable,
+			minDP:      int32(vcfToGtstoreMinDP),
+			noCallable: vcfToGtstoreNoCallable,
 			runs:       make([]*callableRun, len(samples)),
 			bands:      bands,
 			format:     formatFields,
@@ -502,7 +502,7 @@ the order the flags were typed. varstore summary prints all of it, and
 		// written, so the failure left all three tables on disk -- which then
 		// tripped the overwrite guard on the --no-callable retry the message
 		// itself asks for.
-		if conv.sawDP == 0 && !vcfToVarstoreNoCallable {
+		if conv.sawDP == 0 && !vcfToGtstoreNoCallable {
 			return discarding(w, fmt.Errorf("no DP field found in %s, so catalog runs cannot be built\n"+
 				"       re-run with --no-callable to accept a store that cannot distinguish\n"+
 				"       non-carrier from not-assayed", strings.Join(args, ", ")))
@@ -517,11 +517,11 @@ the order the flags were typed. varstore summary prints all of it, and
 		}
 
 		if vcfVerbose {
-			conv.report(cmd.ErrOrStderr(), vcfToVarstoreOut, time.Since(started))
+			conv.report(cmd.ErrOrStderr(), vcfToGtstoreOut, time.Since(started))
 		}
 		fmt.Fprintf(cmd.ErrOrStderr(),
 			"wrote %s: %d calls, %d catalog sites, %d catalog runs over %d samples\n",
-			vcfToVarstoreOut, w.NCalls, w.NSites, w.NCatalogRuns, len(samples))
+			vcfToGtstoreOut, w.NCalls, w.NSites, w.NCatalogRuns, len(samples))
 		return nil
 	},
 }
@@ -665,7 +665,7 @@ type callableRun struct {
 // parquetConverter turns a stream of VCF records into store rows, holding only
 // one open run per sample so memory does not grow with the input.
 type parquetConverter struct {
-	w          *varstore.Writer
+	w          *gtstore.Writer
 	samples    []string
 	minDP      int32
 	noCallable bool
@@ -679,12 +679,12 @@ type parquetConverter struct {
 
 	// format are the captured FORMAT fields, and formatBuf is the per-call
 	// scratch they are read into. Nil when --format was not given.
-	format    []varstore.FormatField
+	format    []gtstore.FormatField
 	formatBuf map[string]any
 
 	// info are the captured INFO fields, and infoBuf is the per-record scratch
 	// they are read into. Nil when --info was not given.
-	info    []varstore.InfoField
+	info    []gtstore.InfoField
 	infoBuf map[string]any
 
 	// perm maps the current file's genotype columns onto canonical sample
@@ -808,30 +808,30 @@ func (c *parquetConverter) record(rec *vcf.VcfRecord) error {
 		n = len(c.samples)
 	}
 	for i := 0; i < n; i++ {
-		sf, err := varstore.ReadSample(rec, i)
+		sf, err := gtstore.ReadSample(rec, i)
 		if err != nil {
 			return fmt.Errorf("%w (%s:%d)", err, rec.Chrom, rec.Pos)
 		}
 		c.nGenotypes++
-		if sf.DP != varstore.Missing {
+		if sf.DP != gtstore.Missing {
 			c.sawDP++
 		}
-		if sf.GQ != varstore.Missing {
+		if sf.GQ != gtstore.Missing {
 			c.sawGQ++
 		}
 		if sf.AD != "" {
 			c.sawAD++
 		}
-		if !varstore.HasCall(sf.GT) {
+		if !gtstore.HasCall(sf.GT) {
 			c.nNoCall++
-		} else if sf.DP != varstore.Missing && sf.DP < c.minDP {
+		} else if sf.DP != gtstore.Missing && sf.DP < c.minDP {
 			c.nBelowDP++
 		}
 
 		// Allele counts come straight from GT and are deliberately outside the
 		// --no-callable guard below: AC/AN are properties of the genotypes, not
 		// of coverage, so they stay meaningful even for a source with no DP.
-		an += varstore.AddAlleleCounts(sf.GT, acCounts)
+		an += gtstore.AddAlleleCounts(sf.GT, acCounts)
 
 		// Coverage bookkeeping is per site, not per allele. A site counts as
 		// callable only when the caller actually made a call there AND depth
@@ -839,9 +839,9 @@ func (c *parquetConverter) record(rec *vcf.VcfRecord) error {
 		// covered one.
 		if !c.noCallable {
 			si := c.sampleAt(i)
-			if varstore.HasCall(sf.GT) && sf.DP != varstore.Missing && sf.DP >= c.minDP {
+			if gtstore.HasCall(sf.GT) && sf.DP != gtstore.Missing && sf.DP >= c.minDP {
 				nCalled++
-				band := varstore.DepthBand(c.bands, sf.DP)
+				band := gtstore.DepthBand(c.bands, sf.DP)
 				r := c.runs[si]
 				// A run spans ONE depth class. Leaving the band closes it and
 				// opens another, which is what keeps each run's MinDP a bound
@@ -876,7 +876,7 @@ func (c *parquetConverter) record(rec *vcf.VcfRecord) error {
 			if vcf.IsRefBlockAlt(alt) {
 				continue
 			}
-			call, ok := varstore.CallFor(rec, name, sf, j+1, alt)
+			call, ok := gtstore.CallFor(rec, name, sf, j+1, alt)
 			if !ok {
 				continue
 			}
@@ -902,7 +902,7 @@ func (c *parquetConverter) record(rec *vcf.VcfRecord) error {
 		if vcf.IsRefBlockAlt(alt) {
 			continue
 		}
-		site := varstore.Site{
+		site := gtstore.Site{
 			Chrom:     chrom,
 			Pos:       pos,
 			Ref:       rec.Ref,
@@ -938,7 +938,7 @@ func (c *parquetConverter) emitRun(i int) error {
 		return nil
 	}
 	c.runs[i] = nil
-	return c.w.WriteRegion(varstore.CalledSiteRun{
+	return c.w.WriteRegion(gtstore.CalledSiteRun{
 		SampleID: c.samples[i],
 		Chrom:    c.curChrom,
 		Start:    r.start,
@@ -1020,9 +1020,9 @@ func (c *parquetConverter) report(out io.Writer, base string, elapsed time.Durat
 		path string
 		n    int64
 	}{
-		{varstore.CallsPath(base), c.w.NCalls},
-		{varstore.CatalogPath(base), c.w.NSites},
-		{varstore.CatalogRunsPath(base), c.w.NCatalogRuns},
+		{gtstore.CallsPath(base), c.w.NCalls},
+		{gtstore.CatalogPath(base), c.w.NSites},
+		{gtstore.CatalogRunsPath(base), c.w.NCatalogRuns},
 	} {
 		size := int64(-1)
 		if st, err := os.Stat(f.path); err == nil {
@@ -1035,47 +1035,47 @@ func (c *parquetConverter) report(out io.Writer, base string, elapsed time.Durat
 
 func init() {
 	f := convertCmd.Flags()
-	f.StringVar(&vcfToVarstoreOut, "out", "", "Store directory, created if needed (DIR/calls.parquet etc)")
+	f.StringVar(&vcfToGtstoreOut, "out", "", "Store directory, created if needed (DIR/calls.parquet etc)")
 	addRegionFlag(convertCmd)
-	f.IntVar(&vcfToVarstoreMinDP, "min-dp", 10, "Minimum DP for a site to count as callable for a sample")
-	f.IntVar(&vcfToVarstoreShardSites, "shard-sites", 0,
+	f.IntVar(&vcfToGtstoreMinDP, "min-dp", 10, "Minimum DP for a site to count as callable for a sample")
+	f.IntVar(&vcfToGtstoreShardSites, "shard-sites", 0,
 		"Split each table every N sites, so a locus query reads one small file instead of pruning a large one (0 writes one file per table)")
-	f.Float64Var(&vcfToVarstoreDepthRatio, "depth-ratio", varstore.DefaultDepthRatio,
+	f.Float64Var(&vcfToGtstoreDepthRatio, "depth-ratio", gtstore.DefaultDepthRatio,
 		"Break catalog runs at depths min-dp x ratio^k, so any query gate is answered within this factor (0 leaves runs unbanded)")
-	f.IntSliceVar(&vcfToVarstoreBands, "depth-bands", nil,
+	f.IntSliceVar(&vcfToGtstoreBands, "depth-bands", nil,
 		"Break catalog runs at exactly these depths instead of a ratio, e.g. 10,20,30")
-	f.StringSliceVar(&vcfToVarstoreFormat, "format", nil,
+	f.StringSliceVar(&vcfToGtstoreFormat, "format", nil,
 		"FORMAT field to capture onto each ALT call, as its own column (repeatable, comma separated, globs allowed)")
-	f.StringSliceVar(&vcfToVarstoreInfo, "info", nil,
+	f.StringSliceVar(&vcfToGtstoreInfo, "info", nil,
 		"INFO field to capture into the catalog, as its own column (repeatable, comma separated, globs allowed)")
-	f.BoolVar(&vcfToVarstoreNoCallable, "no-callable", false, "Accept a source with no DP field; catalog runs will be empty")
+	f.BoolVar(&vcfToGtstoreNoCallable, "no-callable", false, "Accept a source with no DP field; catalog runs will be empty")
 	addPassingFlag(convertCmd, "Only convert passing variants")
-	f.StringVar(&vcfToVarstoreCompression, "compression", "zstd", "Parquet compression: zstd, snappy, or none")
-	f.IntVar(&vcfToVarstoreRowGroupSize, "row-group-size", 250000, "Rows per parquet row group")
+	f.StringVar(&vcfToGtstoreCompression, "compression", "zstd", "Parquet compression: zstd, snappy, or none")
+	f.IntVar(&vcfToGtstoreRowGroupSize, "row-group-size", 250000, "Rows per parquet row group")
 	addVerboseFlag(convertCmd, "Report progress and a conversion summary on stderr")
-	f.BoolVar(&vcfToVarstoreForce, "force", false, "Overwrite an existing store at --out")
+	f.BoolVar(&vcfToGtstoreForce, "force", false, "Overwrite an existing store at --out")
 
 	// Generated from the library's own list, so the flag names and the keys they
 	// write cannot drift apart, and a key added upstream shows up here for free.
-	for _, key := range varstore.ReservedMetaKeys {
+	for _, key := range gtstore.ReservedMetaKeys {
 		p := new(string)
-		vcfToVarstoreMetaNamed[key] = p
+		vcfToGtstoreMetaNamed[key] = p
 		f.StringVar(p, "meta-"+key, "", metaFlagHelp[key])
 	}
-	f.StringArrayVar(&vcfToVarstoreMetaPairs, "meta", nil,
+	f.StringArrayVar(&vcfToGtstoreMetaPairs, "meta", nil,
 		"Record KEY=VALUE in the store's metadata (repeatable; lowercase key of [a-z0-9_-])")
 }
 
 // metaFlagHelp is the one-line help for each reserved metadata key. Keyed by the
 // key rather than positional so a reordering upstream cannot mislabel a flag.
 var metaFlagHelp = map[string]string{
-	varstore.MetaKeyDataset:     "Name of the dataset or release this store was built from",
-	varstore.MetaKeyReference:   "Reference assembly the calls were made against (e.g. GRCh38)",
-	varstore.MetaKeyCaller:      "Variant caller and version that produced the input (e.g. 'GATK 4.2.6.1')",
-	varstore.MetaKeyAccession:   "Study or dataset accession (e.g. phs000000)",
-	varstore.MetaKeyURL:         "Where the source data was retrieved from",
-	varstore.MetaKeyVersion:     "Release version of the dataset itself",
-	varstore.MetaKeyDescription: "Free-text description of the dataset",
+	gtstore.MetaKeyDataset:     "Name of the dataset or release this store was built from",
+	gtstore.MetaKeyReference:   "Reference assembly the calls were made against (e.g. GRCh38)",
+	gtstore.MetaKeyCaller:      "Variant caller and version that produced the input (e.g. 'GATK 4.2.6.1')",
+	gtstore.MetaKeyAccession:   "Study or dataset accession (e.g. phs000000)",
+	gtstore.MetaKeyURL:         "Where the source data was retrieved from",
+	gtstore.MetaKeyVersion:     "Release version of the dataset itself",
+	gtstore.MetaKeyDescription: "Free-text description of the dataset",
 }
 
 // sampleAt maps a genotype column of the file being read to its canonical
@@ -1183,7 +1183,7 @@ func collectContigs(cmd *cobra.Command, inputs []string, region string) ([]strin
 // A failed removal matters enough to say: what survives looks like a store, so
 // the overwrite guard will refuse to replace it, and the retry the error asks
 // for cannot run until it is deleted by hand.
-func discarding(w *varstore.Writer, err error) error {
+func discarding(w *gtstore.Writer, err error) error {
 	if derr := w.Discard(); derr != nil {
 		return fmt.Errorf("%w\n       the partial store could not be removed: %v", err, derr)
 	}
@@ -1198,7 +1198,7 @@ func discarding(w *varstore.Writer, err error) error {
 // "s3:// support was not compiled into this build" are different problems with
 // different fixes.
 func writableSchemes() string {
-	schemes := varstore.SinkSchemes()
+	schemes := gtstore.SinkSchemes()
 	if len(schemes) == 0 {
 		return ", and no remote transports are linked into this build"
 	}

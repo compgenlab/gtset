@@ -68,63 +68,63 @@ jobs:
       - name: Build binaries
         env:
           LDFLAGS: >-
-            -X 'github.com/compgenlab/varstore/internal/cli.Version=${{ steps.version.outputs.version }}'
-            -X 'github.com/compgenlab/varstore/internal/cli.GitHash=${{ steps.version.outputs.git_hash }}'
+            -X 'github.com/compgenlab/gtstore/internal/cli.Version=${{ steps.version.outputs.version }}'
+            -X 'github.com/compgenlab/gtstore/internal/cli.GitHash=${{ steps.version.outputs.git_hash }}'
         run: |
           mkdir -p bin
-          GOOS=darwin  GOARCH=arm64                go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/varstore.darwin_arm64 ./cmd/varstore
-          GOOS=darwin  GOARCH=amd64                go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/varstore.darwin_amd64 ./cmd/varstore
-          GOOS=linux   GOARCH=arm64 CGO_ENABLED=0  go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/varstore.linux_arm64 ./cmd/varstore
-          GOOS=linux   GOARCH=amd64 CGO_ENABLED=0  go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/varstore.linux_amd64 ./cmd/varstore
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0  go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/varstore.windows_amd64.exe ./cmd/varstore
+          GOOS=darwin  GOARCH=arm64                go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/gtstore.darwin_arm64 ./cmd/gtstore
+          GOOS=darwin  GOARCH=amd64                go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/gtstore.darwin_amd64 ./cmd/gtstore
+          GOOS=linux   GOARCH=arm64 CGO_ENABLED=0  go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/gtstore.linux_arm64 ./cmd/gtstore
+          GOOS=linux   GOARCH=amd64 CGO_ENABLED=0  go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/gtstore.linux_amd64 ./cmd/gtstore
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0  go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/gtstore.windows_amd64.exe ./cmd/gtstore
 
-      - name: Upload varstore.darwin_arm64
+      - name: Upload gtstore.darwin_arm64
         uses: actions/upload-artifact@v7
         with:
-          name: varstore.darwin_arm64
-          path: bin/varstore.darwin_arm64
+          name: gtstore.darwin_arm64
+          path: bin/gtstore.darwin_arm64
 
-      - name: Upload varstore.darwin_amd64
+      - name: Upload gtstore.darwin_amd64
         uses: actions/upload-artifact@v7
         with:
-          name: varstore.darwin_amd64
-          path: bin/varstore.darwin_amd64
+          name: gtstore.darwin_amd64
+          path: bin/gtstore.darwin_amd64
 
-      - name: Upload varstore.linux_arm64
+      - name: Upload gtstore.linux_arm64
         uses: actions/upload-artifact@v7
         with:
-          name: varstore.linux_arm64
-          path: bin/varstore.linux_arm64
+          name: gtstore.linux_arm64
+          path: bin/gtstore.linux_arm64
 
-      - name: Upload varstore.linux_amd64
+      - name: Upload gtstore.linux_amd64
         uses: actions/upload-artifact@v7
         with:
-          name: varstore.linux_amd64
-          path: bin/varstore.linux_amd64
+          name: gtstore.linux_amd64
+          path: bin/gtstore.linux_amd64
 
-      - name: Upload varstore.windows_amd64
+      - name: Upload gtstore.windows_amd64
         uses: actions/upload-artifact@v7
         with:
-          name: varstore.windows_amd64.exe
-          path: bin/varstore.windows_amd64.exe
+          name: gtstore.windows_amd64.exe
+          path: bin/gtstore.windows_amd64.exe
 
       - name: Create source archive
         run: |
           VERSION=${{ steps.version.outputs.version }}
           mkdir -p dist
-          git archive --format=zip --prefix=varstore-${VERSION}/ HEAD > dist/varstore-${VERSION}-src.zip
+          git archive --format=zip --prefix=gtstore-${VERSION}/ HEAD > dist/gtstore-${VERSION}-src.zip
 
       - name: Create tagged release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            bin/varstore.darwin_arm64
-            bin/varstore.darwin_amd64
-            bin/varstore.linux_arm64
-            bin/varstore.linux_amd64
-            bin/varstore.windows_amd64.exe
-            dist/varstore-*-src.zip
+            bin/gtstore.darwin_arm64
+            bin/gtstore.darwin_amd64
+            bin/gtstore.linux_arm64
+            bin/gtstore.linux_amd64
+            bin/gtstore.windows_amd64.exe
+            dist/gtstore-*-src.zip
 
       - name: Create dev release
         if: github.ref == 'refs/heads/main'
@@ -140,9 +140,9 @@ jobs:
             **Commit:** ${{ github.sha }}
             **Version:** ${{ steps.version.outputs.version }}
           files: |
-            bin/varstore.darwin_arm64
-            bin/varstore.darwin_amd64
-            bin/varstore.linux_arm64
-            bin/varstore.linux_amd64
-            bin/varstore.windows_amd64.exe
-            dist/varstore-*-src.zip
+            bin/gtstore.darwin_arm64
+            bin/gtstore.darwin_amd64
+            bin/gtstore.linux_arm64
+            bin/gtstore.linux_amd64
+            bin/gtstore.windows_amd64.exe
+            dist/gtstore-*-src.zip

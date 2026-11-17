@@ -1,9 +1,9 @@
-module github.com/compgenlab/varstore
+module github.com/compgenlab/gtstore
 
 go 1.24.9
 
 require (
-	github.com/compgenlab/cghts v0.12.6
+	github.com/compgenlab/cghts v0.12.7
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
 )

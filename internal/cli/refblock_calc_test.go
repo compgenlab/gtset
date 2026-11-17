@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 )
 
 // A pVCF with S1 and S2, converted with bands 10,20,50: the store a fragment is
@@ -74,15 +74,15 @@ func refBlocksFixture(t *testing.T, sample string) (roster, gvcf string) {
 	return convert(t, pvcf, "--depth-bands", "10,20,50"), gvcf
 }
 
-func fragmentSpans(t *testing.T, dir string) (*varstore.FragmentMeta, []string) {
+func fragmentSpans(t *testing.T, dir string) (*gtstore.FragmentMeta, []string) {
 	t.Helper()
-	m, err := varstore.ReadFragmentMeta(context.Background(), dir)
+	m, err := gtstore.ReadFragmentMeta(context.Background(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var spans []string
 	for _, c := range m.Chroms {
-		if err := varstore.FragmentBlocks(context.Background(), dir, c, func(b varstore.RefBlock) bool {
+		if err := gtstore.FragmentBlocks(context.Background(), dir, c, func(b gtstore.RefBlock) bool {
 			spans = append(spans, fmt.Sprintf("%s %d-%d @%d", b.Chrom, b.Start, b.End, b.MinDP))
 			return true
 		}); err != nil {

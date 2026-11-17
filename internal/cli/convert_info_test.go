@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 	"github.com/compgenlab/cghts/vcf"
 )
 
@@ -60,10 +60,10 @@ func TestResolveInfoFieldsReadsTheHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]varstore.InfoField{
-		"R2":  {Name: "R2", Column: "info_r2", Type: varstore.InfoFloat, Number: "1"},
-		"IMP": {Name: "IMP", Column: "info_imp", Type: varstore.InfoFlag, Number: "0"},
-		"AF":  {Name: "AF", Column: "info_af", Type: varstore.InfoFloat, Number: "A"},
+	want := map[string]gtstore.InfoField{
+		"R2":  {Name: "R2", Column: "info_r2", Type: gtstore.InfoFloat, Number: "1"},
+		"IMP": {Name: "IMP", Column: "info_imp", Type: gtstore.InfoFlag, Number: "0"},
+		"AF":  {Name: "AF", Column: "info_af", Type: gtstore.InfoFloat, Number: "A"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("resolved %d fields, want %d: %+v", len(got), len(want), got)
@@ -240,7 +240,7 @@ func TestCaptureInfoKeepsNumberDotWhole(t *testing.T) {
 		t.Fatalf("a Number=. field was refused: %v", err)
 	}
 	for _, f := range fields {
-		if f.Type != varstore.InfoString || f.Number != "." {
+		if f.Type != gtstore.InfoString || f.Number != "." {
 			t.Errorf("%s resolved to %s/%s, want String/.", f.Name, f.Type, f.Number)
 		}
 	}
@@ -266,18 +266,18 @@ func TestConvertCapturesNumberDotInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := convert(t, p, "--info", "IMPUTED,XS")
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 	for _, f := range s.InfoFields() {
-		if f.Type != varstore.InfoString || f.Number != "." {
+		if f.Type != gtstore.InfoString || f.Number != "." {
 			t.Errorf("manifest records %+v, want String/.", f)
 		}
 	}
 	rows := 0
-	if err := s.SitesInfo(func(site varstore.Site, info varstore.InfoRow) bool {
+	if err := s.SitesInfo(func(site gtstore.Site, info gtstore.InfoRow) bool {
 		xs, ok := info.String("info_xs")
 		if site.Pos == 4000 {
 			rows++
@@ -304,18 +304,18 @@ func TestConvertCapturesNumberDotFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := convert(t, p, "--format", "XF")
-	s, err := varstore.OpenParquet(base)
+	s, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 	for _, f := range s.FormatFields() {
-		if f.Type != varstore.InfoString || f.Number != "." {
+		if f.Type != gtstore.InfoString || f.Number != "." {
 			t.Errorf("manifest records %+v, want String/.", f)
 		}
 	}
 	got := map[string]string{}
-	if err := s.CallsFormat(func(c varstore.Call, f varstore.FormatRow) bool {
+	if err := s.CallsFormat(func(c gtstore.Call, f gtstore.FormatRow) bool {
 		if v, ok := f.String("fmt_xf"); ok {
 			got[c.SampleID+":"+c.Alt] = v
 		}
