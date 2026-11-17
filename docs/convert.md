@@ -592,6 +592,7 @@ The roster lives in metadata rather than a fourth file because reconstructing re
 
 ## See also
 
+- [quickstart.md](quickstart.md) — building a store from a cohort VCF, and optionally gVCFs, step by step
 - `gtstore convert --help`, `gtstore query --help`
 - `cgkit vcf-gtcount` — genotype distribution summarized per site
 - The implementation lives in the `gtstore` package; its doc comments carry the design rationale in more detail.

@@ -22,6 +22,9 @@ make test
 
 ## Pipeline
 
+Step by step, with the gVCF part optional and adding gVCFs in batches:
+[docs/quickstart.md](docs/quickstart.md).
+
 ```bash
 # 1. Convert the joint-called pVCF, one volume per chromosome
 gtstore convert --out cohort/chr1 chr1.vcf.gz

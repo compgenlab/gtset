@@ -26,6 +26,9 @@ Layout:
 - `internal/cli/` -- the subcommands, one file each: `convert`, `create`,
   `refblock-calc`, `refblock-attach`, `query`, `summary`.
 - `internal/{buildinfo,cmdio,cmdtest,locator}` -- copied from cgkit.
+- `docs/` -- `quickstart.md` (pVCF -> store, then the optional gVCF steps; every
+  command in it was run against a small cohort, so re-run it when a flag changes)
+  and `convert.md` (the format reference).
 
 Pipeline:
 
