@@ -5,15 +5,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 )
 
-// Tests for the varstore.Calls(Query) surface, exercised through both backends.
+// Tests for the gtstore.Calls(Query) surface, exercised through both backends.
 //
 // The point of the single-method reshape is that site selection and sample
 // selection are independent axes, so these cover the combinations the four old
 // methods could not express -- several loci at once, several samples at once, and
-// both axes together. They live here rather than in varstore because the fixtures
+// both axes together. They live here rather than in gtstore because the fixtures
 // and the VCF-to-store converter do.
 
 // bothBackends runs a query against a VCF and against a store converted from it,
@@ -22,23 +22,23 @@ import (
 // Quality columns are deliberately excluded from the comparison: a
 // store-reconstructed reference call has no DP/AD/GQ where a VCF does. What must
 // match is which rows appear, and in what order.
-func bothBackends(t *testing.T, vcfPath string, q varstore.Query) []string {
+func bothBackends(t *testing.T, vcfPath string, q gtstore.Query) []string {
 	t.Helper()
 	base := convert(t, vcfPath)
 
-	v, err := varstore.OpenVcf(vcfPath)
+	v, err := gtstore.OpenVcf(vcfPath)
 	if err != nil {
 		t.Fatalf("OpenVcf: %v", err)
 	}
 	defer v.Close()
-	p, err := varstore.OpenParquet(base)
+	p, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatalf("OpenParquet: %v", err)
 	}
 	defer p.Close()
 
-	keys := func(s varstore.Store, which string) []string {
-		calls, err := varstore.CollectCalls(s, q)
+	keys := func(s gtstore.Store, which string) []string {
+		calls, err := gtstore.CollectCalls(s, q)
 		if err != nil {
 			t.Fatalf("%s Calls: %v", which, err)
 		}
@@ -58,7 +58,7 @@ func bothBackends(t *testing.T, vcfPath string, q varstore.Query) []string {
 // TestQuerySeveralLociAtOnce is the case the old API could only serve by looping,
 // which is what made a panel query cost one row-group decode per variant.
 func TestQuerySeveralLociAtOnce(t *testing.T) {
-	got := bothBackends(t, "testdata/coverage.vcf", varstore.Query{Loci: []varstore.Locus{
+	got := bothBackends(t, "testdata/coverage.vcf", gtstore.Query{Loci: []gtstore.Locus{
 		{Chrom: "chr1", Pos: 500, Ref: "A", Alt: "T"},
 		{Chrom: "chr1", Pos: 100, Ref: "A", Alt: "G"},
 	}})
@@ -72,9 +72,9 @@ func TestQuerySeveralLociAtOnce(t *testing.T) {
 // TestQueryBothAxes pins the combination that used to be a hard error at the CLI
 // and inexpressible in the library: these samples, at these sites.
 func TestQueryBothAxes(t *testing.T) {
-	locus := []varstore.Locus{{Chrom: "chr1", Pos: 100, Ref: "A", Alt: "G"}}
+	locus := []gtstore.Locus{{Chrom: "chr1", Pos: 100, Ref: "A", Alt: "G"}}
 
-	got := bothBackends(t, "testdata/coverage.vcf", varstore.Query{
+	got := bothBackends(t, "testdata/coverage.vcf", gtstore.Query{
 		Loci:    locus,
 		Samples: []string{"S1"},
 	})
@@ -83,10 +83,10 @@ func TestQueryBothAxes(t *testing.T) {
 	}
 
 	// With reference calls the same query answers "what is S1's genotype there".
-	got = bothBackends(t, "testdata/coverage.vcf", varstore.Query{
+	got = bothBackends(t, "testdata/coverage.vcf", gtstore.Query{
 		Loci:       locus,
 		Samples:    []string{"S1"},
-		Gate:       varstore.Gate{MinDP: 10},
+		Gate:       gtstore.Gate{MinDP: 10},
 		IncludeRef: true,
 	})
 	if len(got) != 1 || !strings.HasPrefix(got[0], "S1 chr1:100:A:G 0/0") {
@@ -97,14 +97,14 @@ func TestQueryBothAxes(t *testing.T) {
 // TestQueryEmptySelectorMeansEverything pins that an empty axis is "no
 // restriction" rather than "nothing", so both axes read the same way.
 func TestQueryEmptySelectorMeansEverything(t *testing.T) {
-	all := bothBackends(t, "testdata/coverage.vcf", varstore.Query{})
+	all := bothBackends(t, "testdata/coverage.vcf", gtstore.Query{})
 	if len(all) != 2 {
 		t.Errorf("the zero Query should return every ALT call (2 in this fixture), got %d: %v",
 			len(all), all)
 	}
 	n := 0
 	for _, s := range []string{"S1", "S2"} {
-		n += len(bothBackends(t, "testdata/coverage.vcf", varstore.Query{Samples: []string{s}}))
+		n += len(bothBackends(t, "testdata/coverage.vcf", gtstore.Query{Samples: []string{s}}))
 	}
 	if n != len(all) {
 		t.Errorf("naming each sample gave %d rows, the unrestricted query %d", n, len(all))
@@ -119,13 +119,13 @@ func TestQueryEmptySelectorMeansEverything(t *testing.T) {
 // site-level exclusion test loses it and fabricates a 0/0. The exclusion has to be
 // keyed on the source record, which is what plan.wantsRecord is for.
 func TestQuerySiblingAltDisqualifiesReference(t *testing.T) {
-	got := bothBackends(t, "testdata/multiallelic.vcf", varstore.Query{
-		Loci:       []varstore.Locus{{Chrom: "chr1", Pos: 200, Ref: "C", Alt: "G"}},
+	got := bothBackends(t, "testdata/multiallelic.vcf", gtstore.Query{
+		Loci:       []gtstore.Locus{{Chrom: "chr1", Pos: 200, Ref: "C", Alt: "G"}},
 		IncludeRef: true,
 	})
 	refs := 0
 	for _, row := range got {
-		if !strings.HasSuffix(row, varstore.HomRefGT) {
+		if !strings.HasSuffix(row, gtstore.HomRefGT) {
 			continue
 		}
 		refs++
@@ -148,16 +148,16 @@ func TestQueryIncludeRefRefusesAtSetup(t *testing.T) {
 	// at open. This is about the store that legitimately tracked no coverage.
 	base := filepath.Join(t.TempDir(), "store")
 	runVcf(t, "convert", "--no-callable", "--out", base, "testdata/coverage.vcf")
-	p, err := varstore.OpenParquet(base)
+	p, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer p.Close()
 
-	if _, err := p.Calls(varstore.Query{IncludeRef: true}); err == nil {
+	if _, err := p.Calls(gtstore.Query{IncludeRef: true}); err == nil {
 		t.Error("expected ErrNotClassifiable from Calls itself, not a silent ALT-only stream")
 	}
-	if _, err := p.Calls(varstore.Query{}); err != nil {
+	if _, err := p.Calls(gtstore.Query{}); err != nil {
 		t.Errorf("an ALT-only query needs no regions file: %v", err)
 	}
 }
@@ -166,13 +166,13 @@ func TestQueryIncludeRefRefusesAtSetup(t *testing.T) {
 // what the streaming form exists for.
 func TestQueryStopsEarly(t *testing.T) {
 	base := convert(t, "testdata/coverage.vcf")
-	p, err := varstore.OpenParquet(base)
+	p, err := gtstore.OpenParquet(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer p.Close()
 
-	seq, err := p.Calls(varstore.Query{})
+	seq, err := p.Calls(gtstore.Query{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,9 +197,9 @@ func TestQueryStopsEarly(t *testing.T) {
 // not the fifth: at contigs.vcf chr10:200 S1 is 0/0 and S2 is 0/1, so the ALT
 // block put S2 ahead of S1.
 func TestQueryRowsAreSampleOrderedWithinALocus(t *testing.T) {
-	got := bothBackends(t, "testdata/contigs.vcf", varstore.Query{
-		Loci:       []varstore.Locus{{Chrom: "chr10", Pos: 200, Ref: "T", Alt: "C"}},
-		Gate:       varstore.Gate{MinDP: 10},
+	got := bothBackends(t, "testdata/contigs.vcf", gtstore.Query{
+		Loci:       []gtstore.Locus{{Chrom: "chr10", Pos: 200, Ref: "T", Alt: "C"}},
+		Gate:       gtstore.Gate{MinDP: 10},
 		IncludeRef: true,
 	})
 	if len(got) != 2 {

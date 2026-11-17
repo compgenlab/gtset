@@ -1,13 +1,13 @@
-# varstore convert: the Parquet genotype store
+# gtstore convert: the Parquet genotype store
 
-A columnar, sparse on-disk format for cohort genotypes, written by `varstore convert` and queried by `varstore query`. It answers "who carries this variant" and "what does this subject carry" without reading every genotype in the callset, and — unlike a plain VCF — it keeps enough context to tell a confidently-called reference genotype apart from a position that was never assayed.
+A columnar, sparse on-disk format for cohort genotypes, written by `gtstore convert` and queried by `gtstore query`. It answers "who carries this variant" and "what does this subject carry" without reading every genotype in the callset, and — unlike a plain VCF — it keeps enough context to tell a confidently-called reference genotype apart from a position that was never assayed.
 
 ## Usage
 
 ```
-varstore convert --out DIR|s3://bucket/store <input.vcf> [input2.vcf ...]
-varstore query [--variant LOCUS | --sample NAME] <input.vcf | store>
-varstore summary <input.vcf | store>
+gtstore convert --out DIR|s3://bucket/store <input.vcf> [input2.vcf ...]
+gtstore query [--variant LOCUS | --sample NAME] <input.vcf | store>
+gtstore summary <input.vcf | store>
 ```
 
 ## What it is
@@ -23,7 +23,7 @@ cohort/
 ```
 
 A trailing `/` on `--out` is optional and means nothing: `cohort` and `cohort/`
-name the same store, and `varstore query` also accepts any member path within it.
+name the same store, and `gtstore query` also accepts any member path within it.
 There used to be a second, filename-prefix form (`cohort.calls.parquet`); it is
 gone, because keeping both meant every path decision first had to guess which
 was meant — and the guess required a filesystem check, which cannot work for a
@@ -35,7 +35,7 @@ pointed straight at `cohort/calls.parquet`.
 ### `--out` may name a bucket
 
 ```sh
-varstore convert --out s3://bucket/cohort input.vcf.gz
+gtstore convert --out s3://bucket/cohort input.vcf.gz
 ```
 
 The members are streamed as they are produced, so nothing is written locally
@@ -49,7 +49,7 @@ format behaves:
 - **A member appears only when it is complete.** A conversion that dies partway
   therefore leaves no readable store — which is the same guarantee the manifest
   gives locally, since it is written last and a store without one is refused.
-- **An abandoned upload is invisible and still billed.** varstore abandons the
+- **An abandoned upload is invisible and still billed.** gtstore abandons the
   uploads on every failure it can see. For the ones it cannot — a killed
   process, a lost node — set a bucket lifecycle rule with
   `AbortIncompleteMultipartUpload`.
@@ -60,7 +60,7 @@ that stopped it by their full locators.
 
 > **Migrating.** Two breaking changes land together: stores are directories, and
 > the manifest is required. A store written by an earlier converter has neither and
-> must be re-converted. `varstore summary <store>` reports why one is
+> must be re-converted. `gtstore summary <store>` reports why one is
 > refused.
 
 ### Metadata: what the store *is*
@@ -77,7 +77,7 @@ GRCh38, but implying is not declaring, and a store read against the wrong
 assumption does not fail. It answers, with coordinates that mean something else.
 
 ```
-varstore convert \
+gtstore convert \
   --meta-dataset 20201028_CCDG_14151_B01_GRM_WGS_2020-08-05 \
   --meta-reference GRCh38 \
   --meta-caller 'GATK 4.2.6.1' \
@@ -91,8 +91,8 @@ Seven keys have an agreed meaning — `dataset`, `reference`, `caller`,
 
 It lands in two places, the same two that already carry provenance: the
 manifest, as a `meta` object, and the calls file's Parquet key/value metadata,
-namespaced under `cgkit.meta.` (the `cgkit.` prefix predates this repo; it is part of the on-disk format and stays) so a supplied key can never shadow one the writer
-vouches for (`--meta source=...` does not become `cgkit.source`).
+namespaced under `gtstore.meta.` so a supplied key can never shadow one the writer
+vouches for (`--meta source=...` does not become `gtstore.source`).
 
 ```jsonc
 // manifest.json.gz
@@ -107,8 +107,8 @@ vouches for (`--meta source=...` does not become `cgkit.source`).
 }
 ```
 
-Values are recorded **verbatim and never validated** — varstore cannot know whether
-`GRCh38` is true, and normalizing it would quietly turn your claim into varstore's.
+Values are recorded **verbatim and never validated** — gtstore cannot know whether
+`GRCh38` is true, and normalizing it would quietly turn your claim into gtstore's.
 Keys *are* validated, to lowercase `[a-z0-9_-]`, because a key has to survive a
 Parquet metadata key, a JSON member and a `grep`.
 
@@ -118,8 +118,8 @@ the order the flags were typed.
 
 Metadata is optional, and a store converted without any omits the field
 entirely rather than writing `{}` — absent means "not stated", never "stated as
-nothing". `varstore summary` prints all of it, `--format json` emits it verbatim,
-and `varstore query -v` reports `dataset` and `reference`, the two that change how
+nothing". `gtstore summary` prints all of it, `--format json` emits it verbatim,
+and `gtstore query -v` reports `dataset` and `reference`, the two that change how
 a result should be read.
 
 ### Schemas
@@ -159,7 +159,7 @@ a result should be read.
 
 **`start` and `end` are site positions, not an interval of covered bases.** See [runs are not coverage](#runs-are-not-coverage).
 
-Absent integer fields are stored in-band as `-1`, exposed as `varstore.Missing`. VCFs routinely omit DP/GQ/AD — a GT-only phased reference panel has none of them — and the columns are kept non-optional so reads stay a flat scan. Callers must test against `Missing` before using a value; a naive comparison would read it as an extremely low quality score.
+Absent integer fields are stored in-band as `-1`, exposed as `gtstore.Missing`. VCFs routinely omit DP/GQ/AD — a GT-only phased reference panel has none of them — and the columns are kept non-optional so reads stay a flat scan. Callers must test against `Missing` before using a value; a naive comparison would read it as an extremely low quality score.
 
 ## Why it exists
 
@@ -167,7 +167,7 @@ A VCF is row-major over samples: one line per site, one column per sample. That 
 
 Two properties fix that:
 
-**Columnar.** Parquet stores each column contiguously, so a query touches only the columns it names, and per-column-chunk statistics let a reader skip whole blocks. `varstore convert` writes rows in coordinate order and declares that ordering, which makes the per-row-group `min`/`max` on `pos` tight and non-overlapping — so a locus lookup can skip every block that cannot contain it. See [row-group pruning](#row-group-pruning).
+**Columnar.** Parquet stores each column contiguously, so a query touches only the columns it names, and per-column-chunk statistics let a reader skip whole blocks. `gtstore convert` writes rows in coordinate order and declares that ordering, which makes the per-row-group `min`/`max` on `pos` tight and non-overlapping — so a locus lookup can skip every block that cannot contain it. See [row-group pruning](#row-group-pruning).
 
 **Sparse.** Only ALT-carrying genotypes are stored. Most genotypes in a cohort callset are homozygous reference, and writing them down costs a great deal to say very little. On the 1000 Genomes 30x BRCA1 slice — 3,747 sites × 3,202 samples ≈ 12.0M genotypes — the store holds **439,183 calls, about 3.7%**.
 
@@ -212,22 +212,22 @@ This follows from what the source asserted. A plain VCF reports variants and mak
 
 Consequently a run is only meaningful at positions that appear in the site catalog, and the reconstruction checks the catalog *first and returns early* for exactly that reason. Reading a run as territory would manufacture reference observations for positions never interrogated.
 
-A position absent from the catalog is answerable only by a store carrying the optional `ref_blocks` table -- reference blocks from per-sample gVCFs, positive statements about every base they span. Such a store answers there for loci named exactly (never by enumerating a region), and never at a catalog site, where a sample with no run is a genotype the caller declined and a block must not overrule it. `varstore query`'s `ref_source` column says which kind of evidence each `0/0` rests on. `varstore convert` itself writes no blocks and **refuses** a gVCF; query a gVCF directly with `varstore query`, which reads its reference blocks as coverage.
+A position absent from the catalog is answerable only by a store carrying the optional `ref_blocks` table -- reference blocks from per-sample gVCFs, positive statements about every base they span. Such a store answers there for loci named exactly (never by enumerating a region), and never at a catalog site, where a sample with no run is a genotype the caller declined and a block must not overrule it. `gtstore query`'s `ref_source` column says which kind of evidence each `0/0` rests on. `gtstore convert` itself writes no blocks and **refuses** a gVCF; query a gVCF directly with `gtstore query`, which reads its reference blocks as coverage.
 
 ## What it can and cannot answer
 
 **Can:** any question about a variant that appears in the site catalog — carriers, non-carriers, allele counts, per-sample variant lists, four-state classification.
 
-**Cannot:** anything about a position the source VCF did not report. Such a locus yields nothing for **any** sample — not an ALT call and not a reference one — even where run intervals bracket it on both sides, and `varstore query` prints a warning so that "0 carriers" is never mistaken for a real negative:
+**Cannot:** anything about a position the source VCF did not report. Such a locus yields nothing for **any** sample — not an ALT call and not a reference one — even where run intervals bracket it on both sides, and `gtstore query` prints a warning so that "0 carriers" is never mistaken for a real negative:
 
 ```
-$ varstore query --variant chr1:250:A:G --hom-ref cohort/
+$ gtstore query --variant chr1:250:A:G --hom-ref cohort/
 warning: chr1:250:A:G is not in the source; reporting not-assayed for every sample.
          A VCF only supports queries for the variants it contains.
 chrom	pos	ref	alt	sample	gt	dp	min_dp	ad_ref	ad_alt	gq
 ```
 
-This is a property of the *input*, not a limitation of Parquet. A gVCF, whose reference blocks carry `END` and `MIN_DP`, makes positive statements about spans -- and `varstore query` now reads one directly, answering for positions no variant record mentions. What is not yet possible is *storing* that: conversion refuses a gVCF, because a block in this schema would become a `<NON_REF>` catalog site with its span discarded.
+This is a property of the *input*, not a limitation of Parquet. A gVCF, whose reference blocks carry `END` and `MIN_DP`, makes positive statements about spans -- and `gtstore query` now reads one directly, answering for positions no variant record mentions. What is not yet possible is *storing* that: conversion refuses a gVCF, because a block in this schema would become a `<NON_REF>` catalog site with its span discarded.
 
 The refusal fires on **a reference block record**, not on anything in the header. A joint-genotyped cohort VCF — a DRAGEN msVCF, a GATK callset out of `GenotypeGVCFs` — routinely keeps the `##ALT=<ID=NON_REF>` declaration it inherited from its source gVCFs without containing a single block, and `##ALT=<ID=*>` declares the ordinary spanning-deletion allele. Those files convert. A record whose alternates are *all* block alleles (`<NON_REF>`, `<*>`, or a bare `.`) is what stops the conversion, and the error names the offending record. A record carrying the block allele beside a real one (`G,<NON_REF>`) is a variant record: it converts, and `<NON_REF>` is masked out of the catalog and the allele counts the way any non-focal alternate is. `-v` reports how many were masked.
 
@@ -243,7 +243,7 @@ chr1  400  .  T  C  .  PASS  .  GT:DP:GQ  ./.:40:0    0/0:30:99
 ```
 
 ```
-$ varstore query --variant chr1:400:T:C --hom-ref --min-dp 10 cohort/
+$ gtstore query --variant chr1:400:T:C --hom-ref --min-dp 10 cohort/
 chrom	pos	ref	alt	sample	gt	dp	min_dp	ad_ref	ad_alt	gq
 chr1	400	T	C	S2	0/0	.	10	.	.	.
 ```
@@ -255,11 +255,11 @@ Multiallelic records are split so each ALT allele gets its own rows. Within a sp
 Given `chr1 200 . C T,G` with `S1=1/2`, `S2=0/1`, `S3=0/0`, `S4=2/2`:
 
 ```
-$ varstore query --variant chr1:200:C:T cohort/
+$ gtstore query --variant chr1:200:C:T cohort/
 chr1	200	C	T	S1	1/.	26	26	5	12	99
 chr1	200	C	T	S2	0/1	29	29	18	11	45
 
-$ varstore query --variant chr1:200:C:G cohort/
+$ gtstore query --variant chr1:200:C:G cohort/
 chr1	200	C	G	S1	./1	26	26	5	9	99
 chr1	200	C	G	S4	1/1	27	27	0	27	99
 ```
@@ -278,7 +278,7 @@ chr1	200	C	G	S4	1/1	27	27	0	27	99
 So `AC ≥ n_carriers` wherever a homozygote occurs, and `AN` is unrelated to `n_called` in both unit and gating. At `chr1:100 A>G` with `S1=0/1`, `S2=0/0`, `S3=1/1`, `S4=0/0`:
 
 ```
-$ varstore query --variant chr1:100:A:G -v cohort/
+$ gtstore query --variant chr1:100:A:G -v cohort/
   site        AC=3 AN=8 AF=0.375  n_carriers=2 n_called=4 n_lowdp=0
   carriers    2
 chrom	pos	ref	alt	sample	gt	dp	min_dp	ad_ref	ad_alt	gq
@@ -290,7 +290,7 @@ Two carriers, three alt alleles — S3 contributes two.
 
 Both are computed **over the samples in this store**, not copied from the source's `INFO` fields, which would be wrong after splitting a multiallelic record or converting a subset of a cohort. They are also computed outside the `--no-callable` guard, since allele counts are a property of genotypes, not of coverage.
 
-## Querying with varstore query
+## Querying with gtstore query
 
 The backend is inferred from the path — VCF or store — and the same question must give the same answer either way. That equivalence is the point of the abstraction, and it is verified on 3,202 1000 Genomes samples including the worst-covered site in BRCA1.
 
@@ -343,7 +343,7 @@ The second row is the point. A store never wrote the reference genotype down, so
 ### Who carries a variant
 
 ```
-$ varstore query --variant chr1:500:A:T cohort/
+$ gtstore query --variant chr1:500:A:T cohort/
 chrom	pos	ref	alt	sample	gt	dp	min_dp	ad_ref	ad_alt	gq
 chr1	500	A	T	S1	0/1	30	30	.	.	99
 ```
@@ -351,7 +351,7 @@ chr1	500	A	T	S1	0/1	30	30	.	.	99
 ### What does a subject carry
 
 ```
-$ varstore query --sample S2 cohort/
+$ gtstore query --sample S2 cohort/
 chrom	pos	ref	alt	sample	gt	dp	min_dp	ad_ref	ad_alt	gq
 chr1	100	A	G	S2	0/1	30	30	.	.	99
 ```
@@ -361,7 +361,7 @@ chr1	100	A	G	S2	0/1	30	30	.	.	99
 By default a query reports only the ALT calls — "which variants does this person carry". `--hom-ref` switches it to every interrogated site — "show me all the sites for this person", reference calls included. The `gt` column separates them.
 
 ```
-$ varstore query --variant chr1:300:G:A --hom-ref cohort/
+$ gtstore query --variant chr1:300:G:A --hom-ref cohort/
 chrom	pos	ref	alt	sample	gt	dp	min_dp	ad_ref	ad_alt	gq
 chr1	300	G	A	S1	0/0	.	10	.	.	.
 chr1	300	G	A	S2	0/0	.	10	.	.	.
@@ -376,7 +376,7 @@ The dots are honest, not missing data: a store keeps only ALT genotypes, so the 
 UCSC (`chr22`), Ensembl (`22`) and NCBI RefSeq (`NC_000022.11`) spellings all resolve, in either direction, against a store or an index using any of them. Comparisons use canonical identity, and tabix lookups resolve against the index's own reference list. The chromosome is echoed back the way it was asked for:
 
 ```
-$ varstore query --variant 1:500:A:T cohort/
+$ gtstore query --variant 1:500:A:T cohort/
 chrom	pos	ref	alt	sample	gt	dp	min_dp	ad_ref	ad_alt	gq
 1	500	A	T	S1	0/1	30	30	.	.	99
 ```
@@ -416,12 +416,12 @@ A store carries a `manifest.json.gz`, written after every member is closed. Its 
 Error: cohort/ has no readable manifest.json.gz, so it cannot be shown to be a
        complete store
        it is from an interrupted conversion, or predates manifests; re-convert
-       it, or inspect it with varstore summary
+       it, or inspect it with gtstore summary
 ```
 
-Nothing else can answer this. The parquet footers prove each member was *finished* — a footer is written only by the writer's close — but a set of finished members says nothing about how much of the input went into them. Worse, the metadata in the calls file actively misleads: `cgkit.source` and `cgkit.contigs` are stamped before the first record is read, so a store holding three chromosomes of a 22-input conversion names all 22 inputs and declares all 22 contigs. It opens cleanly, queries cleanly, and reports `not_assayed` for the rest — exactly what a complete store reports for a position the source never mentioned.
+Nothing else can answer this. The parquet footers prove each member was *finished* — a footer is written only by the writer's close — but a set of finished members says nothing about how much of the input went into them. Worse, the metadata in the calls file actively misleads: `gtstore.source` and `gtstore.contigs` are stamped before the first record is read, so a store holding three chromosomes of a 22-input conversion names all 22 inputs and declares all 22 contigs. It opens cleanly, queries cleanly, and reports `not_assayed` for the rest — exactly what a complete store reports for a position the source never mentioned.
 
-So the manifest also records what was *written*: per-member row counts, checked at open against each member's own footer, and a per-chromosome census of sites and calls. That census is the one field that can contradict the rest, and `varstore summary --counts` prints it.
+So the manifest also records what was *written*: per-member row counts, checked at open against each member's own footer, and a per-chromosome census of sites and calls. That census is the one field that can contradict the rest, and `gtstore summary --counts` prints it.
 
 There is no escape hatch, and a store written before manifests must be re-converted.
 
@@ -465,7 +465,7 @@ Every number in this table is an ad-hoc measurement recorded in a commit message
 Measured, and the answer is more qualified than the direction alone suggests. Reproduce with:
 
 ```
-CGKIT_BENCH_SAMPLES=100 CGKIT_BENCH_SITES=5000 \
+GTSTORE_BENCH_SAMPLES=100 GTSTORE_BENCH_SITES=5000 \
   go test ./internal/cli/ -run '^$' -bench BenchmarkStoreVsVcf
 ```
 
@@ -503,9 +503,9 @@ Extrapolating the loop to a 10⁶-variant panel gives tens of hours, which is wh
 
 ### Reading these numbers
 
-The corpus is **synthetic and small**, and the machine is a QEMU virtual CPU, so the absolute milliseconds mean little — the ratios and the *shapes* (flat versus linear) are the findings. Row-group size matters enough to be a knob: left at the converter's 250,000 default, a corpus this size lands in a single row group, position statistics can never exclude it, and every lookup scans the whole file. `CGKIT_BENCH_ROWGROUP` controls it, and the benchmark defaults to a value that produces several groups, as a real store would have.
+The corpus is **synthetic and small**, and the machine is a QEMU virtual CPU, so the absolute milliseconds mean little — the ratios and the *shapes* (flat versus linear) are the findings. Row-group size matters enough to be a knob: left at the converter's 250,000 default, a corpus this size lands in a single row group, position statistics can never exclude it, and every lookup scans the whole file. `GTSTORE_BENCH_ROWGROUP` controls it, and the benchmark defaults to a value that produces several groups, as a real store would have.
 
-Deliberately not reported: bytes read and row groups decoded. Those would be the more durable numbers, since they survive hardware changes, but they need counters inside `varstore`.
+Deliberately not reported: bytes read and row groups decoded. Those would be the more durable numbers, since they survive hardware changes, but they need counters inside `gtstore`.
 
 ### Known limitation: --sample queries do not prune
 
@@ -531,7 +531,7 @@ Inputs must **not overlap**: a chromosome cannot be revisited once left, and pos
 
 ## Flags
 
-### varstore convert
+### gtstore convert
 
 | flag | default | description |
 |---|---|---|
@@ -545,7 +545,7 @@ Inputs must **not overlap**: a chromosome cannot be revisited once left, and pos
 | `--row-group-size N` | `250000` | rows per parquet row group |
 | `-v`, `--verbose` | off | progress, per-chromosome trace, conversion summary, field census |
 
-### varstore query
+### gtstore query
 
 | flag | default | description |
 |---|---|---|
@@ -559,7 +559,7 @@ Inputs must **not overlap**: a chromosome cannot be revisited once left, and pos
 | `-o`, `--output` | `-` | output filename |
 | `-v`, `--verbose` | off | backend, provenance, per-variant AC/AN/AF, gate effect (all to stderr) |
 
-### varstore summary
+### gtstore summary
 
 | flag | default | description |
 |---|---|---|
@@ -577,21 +577,21 @@ All verbose output goes to stderr, so the tabular stream stays parseable.
 
 ## Provenance
 
-Conversion records these keys in the calls file, reported by `varstore query -v`:
+Conversion records these keys in the calls file, reported by `gtstore query -v`:
 
 | key | contents |
 |---|---|
-| `cgkit.samples` | the sample roster, in source order |
-| `cgkit.min_dp` | the callable threshold used |
-| `cgkit.contigs` | the source's `##contig` lines, verbatim — so an export can declare its reference |
-| `cgkit.nocallable` | `1` when regions are absent by request |
-| `cgkit.source` | input filename(s) |
-| `cgkit.program`, `cgkit.command` | writing program and version, and full command line |
+| `gtstore.samples` | the sample roster, in source order |
+| `gtstore.min_dp` | the callable threshold used |
+| `gtstore.contigs` | the source's `##contig` lines, verbatim — so an export can declare its reference |
+| `gtstore.nocallable` | `1` when regions are absent by request |
+| `gtstore.source` | input filename(s) |
+| `gtstore.program`, `gtstore.command` | writing program and version, and full command line |
 
 The roster lives in metadata rather than a fourth file because reconstructing reference calls needs every sample, while the calls file only ever mentions carriers — a sample carrying nothing anywhere would otherwise be invisible and never reported at all.
 
 ## See also
 
-- `varstore convert --help`, `varstore query --help`
+- `gtstore convert --help`, `gtstore query --help`
 - `cgkit vcf-gtcount` — genotype distribution summarized per site
-- The implementation lives in the `varstore` package; its doc comments carry the design rationale in more detail.
+- The implementation lives in the `gtstore` package; its doc comments carry the design rationale in more detail.

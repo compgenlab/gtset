@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/compgenlab/varstore/internal/buildinfo"
+	"github.com/compgenlab/gtstore/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -21,17 +21,17 @@ func versionString() string {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "varstore",
+	Use:   "gtstore",
 	Short: "Sparse genotype store for cohort VCFs and gVCFs",
-	Long: `varstore converts cohort VCFs into a sparse, queryable genotype store and
+	Long: `gtstore converts cohort VCFs into a sparse, queryable genotype store and
 answers genotype queries against a store or a VCF alike.
 
-  varstore convert        --out cohort/chr1 chr1.vcf.gz      VCF -> volume
-  varstore create         cohort/                            volumes -> varstore
-  varstore refblock-calc  --roster cohort --out frags/S1 S1.g.vcf.gz
-  varstore refblock-attach cohort/ frags/                    gVCF blocks -> store
-  varstore query          cohort --variant chr1:1000:A:T     genotypes
-  varstore summary        cohort                             what a store holds`,
+  gtstore convert        --out cohort/chr1 chr1.vcf.gz      VCF -> volume
+  gtstore create         cohort/                            volumes -> gtstore
+  gtstore refblock-calc  --roster cohort --out frags/S1 S1.g.vcf.gz
+  gtstore refblock-attach cohort/ frags/                    gVCF blocks -> store
+  gtstore query          cohort --variant chr1:1000:A:T     genotypes
+  gtstore summary        cohort                             what a store holds`,
 	// Silence usage only once we reach a command's RunE. Cobra validates args
 	// and flags *before* PersistentPreRun, so parsing errors (e.g. a missing
 	// argument) still print usage, while errors during execution do not.
@@ -59,8 +59,8 @@ func init() {
 {{end}}{{if .Annotations}}{{with (index .Annotations "since")}}Since: {{.}}
 
 {{end}}{{end}}{{if or .Runnable .HasSubCommands}}{{.UsageString}}{{end}}`
-	rootCmd.SetHelpTemplate(helpBody + "\nvarstore " + versionString() +
-		" https://github.com/compgenlab/varstore\n")
+	rootCmd.SetHelpTemplate(helpBody + "\ngtstore " + versionString() +
+		" https://github.com/compgenlab/gtstore\n")
 
 	InitCmd(rootCmd)
 }

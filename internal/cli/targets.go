@@ -7,13 +7,13 @@ import (
 	"io"
 	"strings"
 
+	"github.com/compgenlab/cghts/gtstore"
 	"github.com/compgenlab/cghts/iosource"
-	"github.com/compgenlab/cghts/varstore"
 	"github.com/compgenlab/cghts/vcf"
 )
 
-// Site selection (--variant) is parsed by cghts: varstore.ParseTargets in
-// varstore/targets.go. What stays here is the sample axis.
+// Site selection (--variant) is parsed by cghts: gtstore.ParseTargets in
+// gtstore/targets.go. What stays here is the sample axis.
 
 // Sample-axis parsing. --sample takes a name or a file of names, mirroring how
 // --variant takes a locus or a file of targets.
@@ -44,7 +44,7 @@ func parseSampleArgs(ctx context.Context, vals []string) (*sampleSet, error) {
 	}
 
 	for _, v := range vals {
-		if !varstore.IsTargetFile(v) {
+		if !gtstore.IsTargetFile(v) {
 			add(v)
 			continue
 		}
@@ -101,7 +101,7 @@ func readSampleFile(ctx context.Context, path string) (names []string, how strin
 // taken as a name -- would look exactly like a subject that genuinely carries
 // nothing. The VCF backend used to fail with "sample not found" before the query
 // API stopped distinguishing them; this restores that at the CLI.
-func checkSamples(store varstore.Store, want []string) error {
+func checkSamples(store gtstore.Store, want []string) error {
 	if len(want) == 0 {
 		return nil
 	}
@@ -153,7 +153,7 @@ func (s *sampleSet) report(w io.Writer) {
 }
 
 // eachListLine walks a whitespace-separated list file, skipping blanks and '#'
-// comments -- the same rules varstore.ParseTargets applies to a site list, so a
+// comments -- the same rules gtstore.ParseTargets applies to a site list, so a
 // sample list and a site list read alike.
 func eachListLine(ctx context.Context, path string, fn func(fields []string) error) error {
 	f, err := iosource.OpenReader(ctx, path)

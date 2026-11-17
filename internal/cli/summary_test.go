@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 )
 
 func TestVarsummaryOnStoreAndVcf(t *testing.T) {
@@ -65,7 +65,7 @@ func TestVarsummaryCensusCountsRows(t *testing.T) {
 		t.Fatalf("--counts produced no census:\n%s", out)
 	}
 
-	m, err := varstore.ReadVolumeManifest(base)
+	m, err := gtstore.ReadVolumeManifest(base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,11 +85,11 @@ func TestVarsummaryJSONIsTheManifest(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "cohort")
 	runVcf(t, "convert", "--out", base, "testdata/coverage.vcf")
 
-	var fromCmd, fromDisk varstore.VolumeManifest
+	var fromCmd, fromDisk gtstore.VolumeManifest
 	if err := json.Unmarshal([]byte(runVcf(t, "summary", "--format", "json", base)), &fromCmd); err != nil {
 		t.Fatal(err)
 	}
-	m, err := varstore.ReadVolumeManifest(base)
+	m, err := gtstore.ReadVolumeManifest(base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,13 +140,13 @@ func TestVarsummaryDefaultDoesNotScan(t *testing.T) {
 	}
 }
 
-// A store missing its manifest cannot be queried, so varstore summary has to be
+// A store missing its manifest cannot be queried, so gtstore summary has to be
 // able to say why -- otherwise "no escape hatch" leaves a user with an
 // unreadable store and no way to learn anything about it.
 func TestVarsummaryExplainsAMissingManifest(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "cohort")
 	runVcf(t, "convert", "--out", base, "testdata/coverage.vcf")
-	if err := os.Remove(varstore.VolumeManifestPath(base)); err != nil {
+	if err := os.Remove(gtstore.VolumeManifestPath(base)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,7 +154,7 @@ func TestVarsummaryExplainsAMissingManifest(t *testing.T) {
 	if err == nil {
 		t.Fatal("a manifest-less store was summarized as though it were fine")
 	}
-	if !strings.Contains(err.Error(), varstore.VolumeManifestFile) {
+	if !strings.Contains(err.Error(), gtstore.VolumeManifestFile) {
 		t.Errorf("the error does not name what is missing: %v", err)
 	}
 }
@@ -166,7 +166,7 @@ func TestVarsummaryExplainsAMissingManifest(t *testing.T) {
 func TestVarsummaryReportsWhatAnUnreadableStoreContains(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "cohort")
 	runVcf(t, "convert", "--out", base, "testdata/coverage.vcf")
-	if err := os.Remove(varstore.VolumeManifestPath(base)); err != nil {
+	if err := os.Remove(gtstore.VolumeManifestPath(base)); err != nil {
 		t.Fatal(err)
 	}
 

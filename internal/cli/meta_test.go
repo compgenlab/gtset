@@ -7,24 +7,24 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 )
 
-// The named flags are generated from varstore.ReservedMetaKeys, so every
+// The named flags are generated from gtstore.ReservedMetaKeys, so every
 // reserved key must reach the store under its own name. A drift here would put
 // a value under the wrong key rather than fail, so it is checked per key.
 func TestToParquetRecordsEveryReservedMetaKey(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "store")
 	args := []string{"convert", "--out", base}
 	want := map[string]string{}
-	for _, k := range varstore.ReservedMetaKeys {
+	for _, k := range gtstore.ReservedMetaKeys {
 		v := "value-for-" + k
 		want[k] = v
 		args = append(args, "--meta-"+k, v)
 	}
 	runVcf(t, append(args, "testdata/coverage.vcf")...)
 
-	m, err := varstore.ReadVolumeManifest(base)
+	m, err := gtstore.ReadVolumeManifest(base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestToParquetGenericMetaFlag(t *testing.T) {
 		"--meta", "url=https://example.org/?a=1&b=2",
 		"testdata/coverage.vcf")
 
-	m, err := varstore.ReadVolumeManifest(base)
+	m, err := gtstore.ReadVolumeManifest(base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestVarSummaryOmitsAbsentMetadata(t *testing.T) {
 }
 
 // -v reports the two keys that change how the rows should be read, and only
-// those; the rest is catalogue that belongs in varstore summary.
+// those; the rest is catalogue that belongs in gtstore summary.
 func TestVarQueryVerboseReportsDatasetAndReference(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "store")
 	runVcf(t, "convert", "--out", base,

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/compgenlab/cghts/varstore"
+	"github.com/compgenlab/cghts/gtstore"
 )
 
 // Banded callable runs.
@@ -36,15 +36,15 @@ chr1	400	.	G	A	50	PASS	.	GT:DP	0/0:35
 chr1	500	.	G	A	50	PASS	.	GT:DP	0/0:60
 `
 
-func runsOf(t *testing.T, dir string) []varstore.CalledSiteRun {
+func runsOf(t *testing.T, dir string) []gtstore.CalledSiteRun {
 	t.Helper()
-	s, err := varstore.OpenParquet(dir)
+	s, err := gtstore.OpenParquet(dir)
 	if err != nil {
 		t.Fatalf("OpenParquet: %v", err)
 	}
 	defer s.Close()
-	var out []varstore.CalledSiteRun
-	if err := s.CatalogRuns(func(r varstore.CalledSiteRun) bool {
+	var out []gtstore.CalledSiteRun
+	if err := s.CatalogRuns(func(r gtstore.CalledSiteRun) bool {
 		out = append(out, r)
 		return true
 	}); err != nil {
@@ -62,16 +62,16 @@ func convertBands(t *testing.T, bands []int) string {
 	}
 	out := filepath.Join(dir, "store")
 
-	vcfToVarstoreOut = out
-	vcfToVarstoreMinDP = 10
-	vcfToVarstoreBands = bands
+	vcfToGtstoreOut = out
+	vcfToGtstoreMinDP = 10
+	vcfToGtstoreBands = bands
 	if len(bands) == 0 {
-		vcfToVarstoreDepthRatio = 0 // unbanded
+		vcfToGtstoreDepthRatio = 0 // unbanded
 	}
-	vcfToVarstoreForce = true
+	vcfToGtstoreForce = true
 	t.Cleanup(func() {
-		vcfToVarstoreOut, vcfToVarstoreMinDP, vcfToVarstoreBands, vcfToVarstoreForce = "", 10, nil, false
-		vcfToVarstoreDepthRatio = varstore.DefaultDepthRatio
+		vcfToGtstoreOut, vcfToGtstoreMinDP, vcfToGtstoreBands, vcfToGtstoreForce = "", 10, nil, false
+		vcfToGtstoreDepthRatio = gtstore.DefaultDepthRatio
 	})
 
 	cmd := convertCmd
@@ -149,7 +149,7 @@ chr1	2000	.	G	A	50	PASS	.	GT:DP	0/0:40	0/1:60
 chr1	3000	.	G	A	50	PASS	.	GT:DP	0/0:45	0/1:60
 `
 
-// homRefRows runs varstore query --hom-ref over the whole contig at one gate and
+// homRefRows runs gtstore query --hom-ref over the whole contig at one gate and
 // returns S1's reference rows as sample@pos. --sample rather than a
 // region, because a region query on a plain VCF needs a tabix index.
 func homRefRows(t *testing.T, input, gate string) map[string]bool {
@@ -158,7 +158,7 @@ func homRefRows(t *testing.T, input, gate string) map[string]bool {
 	for _, l := range strings.Split(dataRowsOnly(runVcf(t, "query",
 		"--sample", "S1", "--hom-ref", "--min-dp", gate, input)), "\n") {
 		f := strings.Split(l, "\t")
-		if len(f) == numCols && f[colChrom] != "chrom" && f[colGT] == varstore.HomRefGT {
+		if len(f) == numCols && f[colChrom] != "chrom" && f[colGT] == gtstore.HomRefGT {
 			out[f[colSample]+"@"+f[colPos]] = true
 		}
 	}
@@ -212,19 +212,19 @@ func TestDepthRatioIsTheDefaultAndExcludesExplicitBands(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s, err := varstore.OpenParquet(convert(t, in))
+	s, err := gtstore.OpenParquet(convert(t, in))
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := s.VolumeManifest().Params
 	s.Close()
 	want := []int32{10, 15, 22, 33, 50, 75, 113, 170, 256, 384, 576, 864}
-	if !reflect.DeepEqual(p.DepthBands, want) || p.DepthRatio != varstore.DefaultDepthRatio {
+	if !reflect.DeepEqual(p.DepthBands, want) || p.DepthRatio != gtstore.DefaultDepthRatio {
 		t.Errorf("default bands = %v ratio %v, want %v ratio %v",
-			p.DepthBands, p.DepthRatio, want, varstore.DefaultDepthRatio)
+			p.DepthBands, p.DepthRatio, want, gtstore.DefaultDepthRatio)
 	}
 
-	s, err = varstore.OpenParquet(convert(t, in, "--depth-bands", "10,20,30"))
+	s, err = gtstore.OpenParquet(convert(t, in, "--depth-bands", "10,20,30"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestDepthRatioIsTheDefaultAndExcludesExplicitBands(t *testing.T) {
 // first is catalog_run, one from the second is ref_block, and an ALT row is ".".
 func TestRefSourceColumnOnAStoreWithRefBlocks(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "store")
-	w, err := varstore.NewWriter(base, varstore.WriterOpts{
+	w, err := gtstore.NewWriter(base, gtstore.WriterOpts{
 		Samples: []string{"S1", "S2"}, MinDP: 10, RefBlocks: true,
 	})
 	if err != nil {
@@ -259,12 +259,12 @@ func TestRefSourceColumnOnAStoreWithRefBlocks(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(w.WriteSite(varstore.Site{Chrom: "chr1", Pos: 1000, Ref: "G", Alt: "A", AC: 1, AN: 4, NCarriers: 1, NCalled: 2}))
-	must(w.WriteCall(varstore.Call{SampleID: "S1", Chrom: "chr1", Pos: 1000, Ref: "G", Alt: "A",
+	must(w.WriteSite(gtstore.Site{Chrom: "chr1", Pos: 1000, Ref: "G", Alt: "A", AC: 1, AN: 4, NCarriers: 1, NCalled: 2}))
+	must(w.WriteCall(gtstore.Call{SampleID: "S1", Chrom: "chr1", Pos: 1000, Ref: "G", Alt: "A",
 		GT: "0/1", DP: 30, ADRef: 15, ADAlt: 15, GQ: 99}))
-	must(w.WriteRegion(varstore.CalledSiteRun{SampleID: "S1", Chrom: "chr1", Start: 1000, End: 1000, NSites: 1, MinDP: 30}))
-	must(w.WriteRegion(varstore.CalledSiteRun{SampleID: "S2", Chrom: "chr1", Start: 1000, End: 1000, NSites: 1, MinDP: 30}))
-	must(w.WriteRefBlock(varstore.RefBlock{SampleID: "S2", Chrom: "chr1", Start: 900, End: 2500, MinDP: 25, GQ: varstore.Missing}))
+	must(w.WriteRegion(gtstore.CalledSiteRun{SampleID: "S1", Chrom: "chr1", Start: 1000, End: 1000, NSites: 1, MinDP: 30}))
+	must(w.WriteRegion(gtstore.CalledSiteRun{SampleID: "S2", Chrom: "chr1", Start: 1000, End: 1000, NSites: 1, MinDP: 30}))
+	must(w.WriteRefBlock(gtstore.RefBlock{SampleID: "S2", Chrom: "chr1", Start: 900, End: 2500, MinDP: 25, GQ: gtstore.Missing}))
 	must(w.Finish())
 
 	rows := map[string]string{}

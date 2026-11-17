@@ -7,12 +7,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/compgenlab/cghts/varstore"
-	"github.com/compgenlab/varstore/internal/buildinfo"
+	"github.com/compgenlab/cghts/gtstore"
+	"github.com/compgenlab/gtstore/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
-// A varstore: several volumes, disjoint by chromosome, read as one.
+// A gtstore: several volumes, disjoint by chromosome, read as one.
 //
 // WHY THIS IS A SEPARATE STEP rather than something a conversion does. A
 // whole-genome callset arrives as one VCF per chromosome and is converted one
@@ -21,10 +21,10 @@ import (
 // and it can only be made once they all exist, because making it means checking
 // that they agree.
 //
-// It also means a varstore can be rebuilt, or one volume replaced, without
+// It also means a gtstore can be rebuilt, or one volume replaced, without
 // reconverting anything.
 //
-// Note that varstore convert already produces a varstore -- a complete one of a
+// Note that gtstore convert already produces a gtstore -- a complete one of a
 // single volume. This does not promote anything to a different kind of object;
 // it composes volumes into a larger archive of the same kind.
 
@@ -32,14 +32,14 @@ var createCmd = &cobra.Command{
 	Annotations: map[string]string{"since": "v0.1.0"},
 	Use:         "create <store-dir> [volume ...]",
 	Short:       "Write a store manifest over volumes that already exist",
-	Long: `Combine existing volumes into one varstore.
+	Long: `Combine existing volumes into one gtstore.
 
-  varstore create cohort/ chr1 chr2 chr3
-  varstore create s3://bucket/cohort chr1 chr2
-  varstore create cohort/
+  gtstore create cohort/ chr1 chr2 chr3
+  gtstore create s3://bucket/cohort chr1 chr2
+  gtstore create cohort/
 
 A volume named without a scheme or a leading slash is relative to the store
-directory, which keeps a varstore one thing to copy, move or delete. Named with
+directory, which keeps a gtstore one thing to copy, move or delete. Named with
 a locator, it is used as given, so volumes may live apart when they must.
 
 Given no volumes, every subdirectory of the store that is a readable volume is
@@ -58,18 +58,18 @@ rediscovered on every query:
   no shared chromosome                   otherwise a locus has two answers and
                                          no rule for choosing
 
-A varstore that cannot be built is a better outcome than one that answers with a
+A gtstore that cannot be built is a better outcome than one that answers with a
 different population depending on which chromosome you ask about.
 
-The manifest is written LAST and named varstore.json.gz. Its presence is what
-makes the directory an archive of several volumes, and varstore and anything else
+The manifest is written LAST and named gtstore.json.gz. Its presence is what
+makes the directory an archive of several volumes, and gtstore and anything else
 reading through cghts will then open it as one.
 
-A varstore is several volumes, disjoint by chromosome, read as one.
+A gtstore is several volumes, disjoint by chromosome, read as one.
 
 Whole-genome data ships one VCF per chromosome, so converting it gives one
 volume per chromosome -- and twenty-five volumes is the wrong unit to manage,
-register or reason about. A person has one genome; a varstore is one object that
+register or reason about. A person has one genome; a gtstore is one object that
 means it.
 
 It is also what makes small shards affordable. A shard index lives in a manifest
@@ -82,8 +82,8 @@ chromosomes it touches.
 
 The words, since two of them used to be one word:
 
-  varstore   the whole archive -- what you hold, name and query
-  volume     one chromosome's worth of it, a complete varstore on its own
+  gtstore   the whole archive -- what you hold, name and query
+  volume     one chromosome's worth of it, a complete gtstore on its own
   shard      a coordinate range within a volume`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -102,18 +102,18 @@ The words, since two of them used to be one word:
 			volumes = found
 		}
 
-		man, err := varstore.BuildStore(cmd.Context(), base, volumes,
+		man, err := gtstore.BuildStore(cmd.Context(), base, volumes,
 			buildinfo.Program(), buildinfo.CommandLine())
 		if err != nil {
 			return err
 		}
-		if err := varstore.WriteStoreManifest(base, *man); err != nil {
+		if err := gtstore.WriteStoreManifest(base, *man); err != nil {
 			return err
 		}
 
 		out := cmd.OutOrStdout()
 		fmt.Fprintf(out, "\nwrote %s: %d volumes, %d samples\n\n",
-			varstore.StoreManifestPath(base), len(man.Volumes), len(man.Samples))
+			gtstore.StoreManifestPath(base), len(man.Volumes), len(man.Samples))
 		for _, m := range man.Volumes {
 			fmt.Fprintf(out, "  %-24s %-28s %s sites\n",
 				m.Name, strings.Join(m.Chroms, " "), comma(m.Sites))
@@ -136,7 +136,7 @@ func discoverVolumes(cmd *cobra.Command, base string) ([]string, error) {
 	}
 	var out []string
 	for _, name := range entries {
-		if _, err := varstore.ReadVolumeManifest(joinLocal(base, name)); err != nil {
+		if _, err := gtstore.ReadVolumeManifest(joinLocal(base, name)); err != nil {
 			continue
 		}
 		out = append(out, name)
