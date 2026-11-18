@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/compgenlab/cghts/gtstore"
@@ -102,46 +101,14 @@ func captureFormat(
 	if len(fields) == 0 {
 		return
 	}
-	// Straight out of the record line rather than through rec.Sample, which
-	// would build a map of every FORMAT key for this sample. Same answers: a key
-	// the record does not declare is skipped, and one the sample dropped reads
-	// as "." and is skipped below.
+	// cghts's FormatValue is the one reading of a captured value, shared with
+	// the query side, so a value written here is the value a query against the
+	// source VCF reports. A key the record does not declare, one the sample
+	// dropped, "." and an unparseable value are all absent -- left out, so the
+	// store writes a null.
 	for _, f := range fields {
-		k := rec.FormatIndex(f.Name)
-		if k < 0 {
-			continue
-		}
-		text := rec.SampleField(sampleIdx, k)
-		if text == "" || text == "." {
-			continue
-		}
-		if f.Number == "A" {
-			parts := strings.Split(text, ",")
-			if altIdx >= len(parts) {
-				// Fewer values than ALTs: attaching the first to another
-				// allele's row would be a number that means something else.
-				continue
-			}
-			text = parts[altIdx]
-		}
-		if text == "" || text == "." {
-			continue
-		}
-		switch f.Type {
-		case gtstore.InfoInteger:
-			n, err := strconv.ParseInt(text, 10, 32)
-			if err != nil {
-				continue
-			}
-			dst[f.Name] = int32(n)
-		case gtstore.InfoFloat:
-			x, err := strconv.ParseFloat(text, 64)
-			if err != nil {
-				continue
-			}
-			dst[f.Name] = x
-		case gtstore.InfoString:
-			dst[f.Name] = text
+		if v, ok := gtstore.FormatValue(rec, sampleIdx, f, altIdx); ok {
+			dst[f.Name] = v
 		}
 	}
 }
