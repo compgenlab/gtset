@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/compgenlab/cghts/gtstore"
@@ -124,50 +123,14 @@ func nearestInfo(h *vcf.VcfHeader, want string) string {
 // with several ALTs becomes several site rows.
 func captureInfo(dst map[string]any, rec *vcf.VcfRecord, fields []gtstore.InfoField, altIdx int) {
 	clear(dst)
+	// cghts's InfoValue is the one reading of a captured value, shared with the
+	// query side: a Flag is present or not, a Number=A field takes this ALT's
+	// element (none when the record has fewer values than ALTs -- another
+	// allele's number would mean something else), and "." or an unparseable
+	// value is absent.
 	for _, f := range fields {
-		val, ok := rec.InfoValue(f.Name)
-		if !ok {
-			continue
-		}
-		switch f.Type {
-		case gtstore.InfoFlag:
-			// Presence is the value. A flag that is there is true; one that is
-			// not never reaches here, and false is what the store writes.
-			dst[f.Name] = true
-			continue
-		}
-		if val.IsMissing() {
-			continue
-		}
-		text := val.String()
-		if f.Number == "A" {
-			parts := strings.Split(text, ",")
-			if altIdx >= len(parts) {
-				// The record declares fewer values than it has ALTs. Recording
-				// the first would attach one allele's number to another's row,
-				// which is worse than recording nothing.
-				continue
-			}
-			text = parts[altIdx]
-		}
-		if text == "" || text == "." {
-			continue
-		}
-		switch f.Type {
-		case gtstore.InfoInteger:
-			n, err := strconv.ParseInt(text, 10, 32)
-			if err != nil {
-				continue
-			}
-			dst[f.Name] = int32(n)
-		case gtstore.InfoFloat:
-			x, err := strconv.ParseFloat(text, 64)
-			if err != nil {
-				continue
-			}
-			dst[f.Name] = x
-		case gtstore.InfoString:
-			dst[f.Name] = text
+		if v, ok := gtstore.InfoValue(rec, f, altIdx); ok {
+			dst[f.Name] = v
 		}
 	}
 }
