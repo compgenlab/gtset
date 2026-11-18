@@ -156,6 +156,31 @@ reporting an unobserved sample as dosage 0 would enter it into a score's
 denominator as a confident homozygous reference. A split multiallelic like "1/." is
 1: one copy of this alternate was seen, and the other allele is a separate question.
 
+Captured INFO and FORMAT fields (convert --info/--format; any declared field
+of a VCF):
+
+  --exclude-info KEY   skip sites where KEY is present (a Flag set, or a value)
+  --require-info KEY   keep only sites where KEY is present
+  --show-info KEY      add info_KEY columns; '*' for every captured field
+  --show-format KEY    add fmt_KEY columns; '*' for every captured field
+
+A skipped site is treated as off the catalog: no carriers and no 0/0 from the
+store's runs -- but at an exact --variant locus, attached gVCF reference blocks
+still answer 0/0 for samples whose gVCF observed reference there (ref_source
+ref_block), except a sample the store has as a carrier at that site. In
+--format vcf, shown fields go in INFO and FORMAT, declared as the source did;
+AC/AN/AF/NS/nhomalt and GT/DP/GQ (and DS with --dosage) are written by the
+output itself and cannot also come from the source.
+
+--reference genome.fa checks every site's REF against an indexed FASTA (.fai;
+a bgzipped .fa.gz also needs its .gzi). A site whose REF does not match is
+skipped and named on stderr -- a store read against the wrong assembly
+otherwise answers confidently in the wrong coordinates. A contig the FASTA
+lacks is an error.
+
+A VCF given to --variant is read for CHROM, POS, REF and ALT only; --passing
+asks only about its records whose FILTER is PASS or '.'.
+
 min_dp is the tightest lower bound on depth the backend can vouch for. Where a
 call records its own depth that is the bound. A reference call recovered from a
 store has no recorded depth, but it came from a run built at the conversion
@@ -214,6 +239,19 @@ written where nothing is known would assert a depth the data never had.`,
 			return err
 		}
 		offCatalog := warnUnknownSites(cmd, store, q)
+		show := resolveShown(store, q)
+
+		queryRowFilter = nil
+		if vcfVarQueryReference != "" {
+			rc, err := openRefChecker(vcfVarQueryReference, cmd.ErrOrStderr())
+			if err != nil {
+				return err
+			}
+			defer rc.Close()
+			defer rc.report()
+			queryRowFilter = rc.keep
+		}
+		defer func() { queryRowFilter = nil }()
 
 		var t *tally
 		if format == "vcf" {
@@ -221,7 +259,11 @@ written where nothing is known would assert a depth the data never had.`,
 			if err != nil {
 				return err
 			}
-			if t, err = writeCallsVCF(vw, store, q, args[0]); err != nil {
+			placed, err := vcfPlacement(show, q, vcfVarQueryDosage, cmd.ErrOrStderr())
+			if err != nil {
+				return err
+			}
+			if t, err = writeCallsVCF(vw, store, q, args[0], placed); err != nil {
 				return err
 			}
 			warnEmptySelectors(cmd, q, t)
@@ -242,11 +284,11 @@ written where nothing is known would assert a depth the data never had.`,
 
 		switch format {
 		case "json":
-			t, err = writeCallsJSON(out, store, q, offCatalog)
+			t, err = writeCallsJSON(out, store, q, offCatalog, show)
 		case "list":
 			t, err = writeCallsList(out, store, q)
 		default:
-			t, err = writeCallsTSV(out, store, q, args[0], offCatalog)
+			t, err = writeCallsTSV(out, store, q, args[0], offCatalog, show)
 		}
 		if err != nil {
 			return err
@@ -468,6 +510,11 @@ func refSourceOf(c gtstore.Call, offCatalog map[string]bool) string {
 	if !gtstore.IsHomRef(c.GT) {
 		return "."
 	}
+	// The backend says, when it can: a site the INFO filter excluded is in the
+	// catalog yet answered from blocks, which no rule here could recover.
+	if c.RefSource != "" {
+		return string(c.RefSource)
+	}
 	if c.Alt == "." || offCatalog[locusKey(c.Locus())] {
 		return string(gtstore.RefFromBlock)
 	}
@@ -490,7 +537,11 @@ func buildQuery(ctx context.Context) (gtstore.Query, *gtstore.Targets, *sampleSe
 		},
 		IncludeRef: vcfVarQueryHomRef,
 	}
-	t, err := gtstore.ParseTargets(ctx, vcfVarQueryVariants)
+	q.ExcludeInfo = splitList(vcfVarQueryExcludeInfo)
+	q.RequireInfo = splitList(vcfVarQueryRequireInfo)
+	q.WithInfo = splitList(vcfVarQueryShowInfo)
+	q.WithFormat = splitList(vcfVarQueryShowFormat)
+	t, err := gtstore.ParseTargetsWith(ctx, vcfVarQueryVariants, gtstore.TargetOptions{Passing: vcfVarQueryPassing})
 	if err != nil {
 		return q, nil, nil, err
 	}
@@ -529,6 +580,11 @@ func (t *tally) add(c gtstore.Call) {
 	t.byLocus[c.Locus()] = n
 }
 
+// queryRowFilter, when set, drops rows before they are counted or written: the
+// --reference check. A package variable rather than a parameter so every output
+// format passes through it without each writer having to remember to.
+var queryRowFilter func(gtstore.Call) (bool, error)
+
 // streamCalls runs the query and hands each row to fn, tallying as it goes.
 func streamCalls(store gtstore.Store, q gtstore.Query, fn func(gtstore.Call) error) (*tally, error) {
 	seq, err := store.Calls(q)
@@ -540,6 +596,15 @@ func streamCalls(store gtstore.Store, q gtstore.Query, fn func(gtstore.Call) err
 		if err != nil {
 			return t, err
 		}
+		if queryRowFilter != nil {
+			keep, err := queryRowFilter(c)
+			if err != nil {
+				return t, err
+			}
+			if !keep {
+				continue
+			}
+		}
 		t.add(c)
 		if err := fn(c); err != nil {
 			return t, err
@@ -549,9 +614,9 @@ func streamCalls(store gtstore.Store, q gtstore.Query, fn func(gtstore.Call) err
 }
 
 // writeCallsTSV streams the shared tabular layout.
-func writeCallsTSV(out *bufio.Writer, store gtstore.Store, q gtstore.Query, source string, offCatalog map[string]bool) (*tally, error) {
+func writeCallsTSV(out *bufio.Writer, store gtstore.Store, q gtstore.Query, source string, offCatalog map[string]bool, show shown) (*tally, error) {
 	provenance(out, source)
-	fmt.Fprintln(out, strings.Join(tsvHeader(), "\t"))
+	fmt.Fprintln(out, strings.Join(append(tsvHeader(), show.columns()...), "\t"))
 	minDP := vouchedMinDP(store)
 	return streamCalls(store, q, func(c gtstore.Call) error {
 		row := fmt.Sprintf("%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
@@ -562,6 +627,9 @@ func writeCallsTSV(out *bufio.Writer, store gtstore.Store, q gtstore.Query, sour
 		if vcfVarQueryDosage {
 			row += "\t" + dosageOf(c.GT)
 		}
+		if show.any() {
+			row += "\t" + strings.Join(show.cells(c), "\t")
+		}
 		_, err := fmt.Fprintln(out, row)
 		return err
 	})
@@ -569,7 +637,7 @@ func writeCallsTSV(out *bufio.Writer, store gtstore.Store, q gtstore.Query, sour
 
 // writeCallsJSON streams a JSON array rather than buffering one, so the shape is
 // the same at any scale.
-func writeCallsJSON(out *bufio.Writer, store gtstore.Store, q gtstore.Query, offCatalog map[string]bool) (*tally, error) {
+func writeCallsJSON(out *bufio.Writer, store gtstore.Store, q gtstore.Query, offCatalog map[string]bool, show shown) (*tally, error) {
 	fmt.Fprintln(out, "[")
 	first := true
 	t, err := streamCalls(store, q, func(c gtstore.Call) error {
@@ -579,12 +647,19 @@ func writeCallsJSON(out *bufio.Writer, store gtstore.Store, q gtstore.Query, off
 		first = false
 		// ref_source rides beside the call rather than inside it: Call is the
 		// store's row type, and provenance is a property of the answer.
+		// Call's own Extra and RefSource are not part of its JSON form; their
+		// content is written here as info/format/ref_source.
 		row := struct {
 			gtstore.Call
-			RefSource string `json:"ref_source,omitempty"`
+			RefSource string            `json:"ref_source,omitempty"`
+			Info      map[string]string `json:"info,omitempty"`
+			Format    map[string]string `json:"format,omitempty"`
 		}{Call: c}
 		if s := refSourceOf(c, offCatalog); s != "." {
 			row.RefSource = s
+		}
+		if show.any() && c.Extra != nil {
+			row.Info, row.Format = c.Extra.Info, c.Extra.Format
 		}
 		b, err := json.Marshal(row)
 		if err != nil {
@@ -609,7 +684,7 @@ func writeCallsJSON(out *bufio.Writer, store gtstore.Store, q gtstore.Query, off
 // It buffers only ONE locus at a time. Rows arrive in the store's order, so every
 // row for a locus is contiguous -- the buffer is bounded by the sample count, not
 // by the query, and records come out in contig order without a comparator.
-func writeCallsVCF(w *vcf.VcfWriter, store gtstore.Store, q gtstore.Query, source string) (*tally, error) {
+func writeCallsVCF(w *vcf.VcfWriter, store gtstore.Store, q gtstore.Query, source string, show shown) (*tally, error) {
 	names := q.Samples
 	if len(names) == 0 {
 		roster, err := store.Samples()
@@ -627,6 +702,7 @@ func writeCallsVCF(w *vcf.VcfWriter, store gtstore.Store, q gtstore.Query, sourc
 	if err != nil {
 		return nil, err
 	}
+	show.headerDefs(h)
 	if err := w.WriteHeader(h); err != nil {
 		return nil, err
 	}
@@ -660,6 +736,9 @@ func writeCallsVCF(w *vcf.VcfWriter, store gtstore.Store, q gtstore.Query, sourc
 		if vcfVarQueryDosage {
 			keys = append(keys, "DS")
 		}
+		for _, f := range show.format {
+			keys = append(keys, f.Name)
+		}
 		rec.SetFormatKeys(keys)
 		rec.AddInfo("AC", strconv.Itoa(ac))
 		rec.AddInfo("AN", strconv.Itoa(an))
@@ -668,6 +747,25 @@ func writeCallsVCF(w *vcf.VcfWriter, store gtstore.Store, q gtstore.Query, sourc
 		}
 		rec.AddInfo("NS", strconv.Itoa(ns))
 		rec.AddInfo("nhomalt", strconv.Itoa(nhom))
+		// The source's INFO, from any row at the locus: INFO is per site, so
+		// every row carries the same values.
+		var info map[string]string
+		for i := range row {
+			if row[i].Extra != nil && row[i].Extra.Info != nil {
+				info = row[i].Extra.Info
+				break
+			}
+		}
+		for _, f := range show.info {
+			v, ok := info[f.Name]
+			switch {
+			case !ok:
+			case f.Type == gtstore.InfoFlag:
+				rec.AddInfoFlag(f.Name)
+			default:
+				rec.AddInfo(f.Name, v)
+			}
+		}
 		for i := range row {
 			gt, dp, gq := "./.", ".", "."
 			if row[i].GT != "" {
@@ -684,6 +782,17 @@ func writeCallsVCF(w *vcf.VcfWriter, store gtstore.Store, q gtstore.Query, sourc
 			}
 			if vcfVarQueryDosage {
 				if err := rec.AddFormat(i, "DS", dosageOf(gt)); err != nil {
+					return err
+				}
+			}
+			for _, f := range show.format {
+				v := "."
+				if row[i].Extra != nil {
+					if x, ok := row[i].Extra.Format[f.Name]; ok {
+						v = x
+					}
+				}
+				if err := rec.AddFormat(i, f.Name, v); err != nil {
 					return err
 				}
 			}
@@ -966,6 +1075,18 @@ func init() {
 	f.BoolVar(&vcfVarQueryHomRef, "hom-ref", false, "Also report reference (0/0) calls, not only alternate carriers")
 	f.StringVar(&vcfVarQueryFormat, "format", "tsv", "Output format: tsv, json, vcf, or list")
 	f.StringVar(&vcfVarQueryStore, "store", "", "Force the backend: vcf or parquet (default: infer from the path)")
+	f.StringArrayVar(&vcfVarQueryExcludeInfo, "exclude-info", nil,
+		"Skip sites where this captured INFO field is present (e.g. IMPUTED); comma-separated or repeatable")
+	f.StringArrayVar(&vcfVarQueryRequireInfo, "require-info", nil,
+		"Keep only sites where this captured INFO field is present; comma-separated or repeatable")
+	f.StringArrayVar(&vcfVarQueryShowInfo, "show-info", nil,
+		"Add these captured INFO fields to the output ('*' for all); comma-separated or repeatable")
+	f.StringArrayVar(&vcfVarQueryShowFormat, "show-format", nil,
+		"Add these captured FORMAT fields to the output ('*' for all); comma-separated or repeatable")
+	f.BoolVar(&vcfVarQueryPassing, "passing", false,
+		"With a VCF given to --variant, ask only about its records whose FILTER is PASS or '.'")
+	f.StringVar(&vcfVarQueryReference, "reference", "",
+		"Indexed FASTA (.fa/.fa.gz with .fai; bgzip also needs .gzi): skip, and warn about, sites whose REF does not match it")
 	addVerboseFlag(queryCmd, "Report the backend, store provenance and gate effect on stderr")
 }
 
