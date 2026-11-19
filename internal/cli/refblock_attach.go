@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 
 var (
 	attachRebuild bool
+	attachAppend  bool
 	attachReplace []string
 	attachFrom    string
 	attachBatch   int
@@ -31,6 +33,7 @@ table, so the store answers at positions off its catalog.
 
   gtstore refblock-attach cohort/ frags/
   gtstore refblock-attach cohort/ --from fragments.txt
+  gtstore refblock-attach cohort/ frags/ --append
   gtstore refblock-attach cohort/ frags/S0042 --replace S0042
 
 A fragment argument is a fragment directory, or a local directory whose
@@ -48,12 +51,19 @@ catalog), or joins the volume itself when the store is a single volume.
 
 The first attach builds the table from the fragments. After that, say which:
 
+  --append            add the samples not attached yet, and keep everyone
+                      already attached as they are; a fragment for a sample
+                      already in the table is skipped. Safe to rerun with the
+                      same fragments, and to point at a directory that keeps
+                      growing. On a store with no blocks yet it is the first
+                      attach.
   --rebuild           build it again from these fragments alone; the old
                       table is ignored. The fragments are the source of truth.
   --replace S1,S2     keep the existing table for everyone else, and swap in
                       these samples' fragments -- for a patient whose gVCF was
                       redone. A replaced sample with no fragment is removed.
-                      Unchanged fragments need not have been kept.
+                      Unchanged fragments need not have been kept. Use
+                      this, not --append, to redo a sample already attached.
 
 Either way every file a changed sample appears in is rewritten, because the
 table is sorted by position across all samples. What differs is what is read.
@@ -77,6 +87,9 @@ that disagree, which the archive refuses to open until it is rerun.`,
 		if len(dirs) == 0 && len(attachReplace) == 0 {
 			return fmt.Errorf("no fragments given")
 		}
+		if attachAppend && (attachRebuild || len(attachReplace) > 0) {
+			return fmt.Errorf("--append, --rebuild and --replace are alternatives; give one")
+		}
 		frags, err := gtstore.LoadFragments(ctx, dirs)
 		if err != nil {
 			return err
@@ -86,6 +99,23 @@ that disagree, which the archive refuses to open until it is rerun.`,
 			Replace: attachReplace,
 			Batch:   attachBatch,
 			TempDir: attachTempDir,
+		}
+		if attachAppend {
+			var skipped []string
+			frags, opts.Replace, skipped, err = planAppend(ctx, base, frags)
+			if err != nil {
+				return err
+			}
+			warn := cmd.ErrOrStderr()
+			if len(skipped) > 0 {
+				fmt.Fprintf(warn, "skipping %d sample(s) already attached: %s\n",
+					len(skipped), listSome(skipped, 10))
+			}
+			if len(frags) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "nothing to append: every fragment's sample is already attached")
+				return nil
+			}
+			fmt.Fprintf(warn, "appending %d sample(s)\n", len(frags))
 		}
 
 		res, err := gtstore.AttachRefBlocksToStore(ctx, base, frags, opts,
@@ -165,6 +195,105 @@ func expandFragments(args []string, from string) ([]string, error) {
 	return out, nil
 }
 
+// planAppend splits fragments into those to attach and those whose sample is
+// already in the table, and says which samples the attach replaces.
+//
+// "Already attached" is read from each volume's own manifest, not the archive's,
+// and means attached in EVERY volume. An attach that died partway leaves volumes
+// that disagree; a sample present in some of them is attached again everywhere,
+// as a replace, which for the volumes that already had it swaps in the same
+// blocks. So rerunning an interrupted --append finishes it.
+//
+// A table attached before the sample list was recorded cannot say who is in it,
+// and is refused rather than guessed at: appending a sample already there would
+// count its coverage twice.
+func planAppend(ctx context.Context, base string, frags []gtstore.Fragment) (
+	attach []gtstore.Fragment, replace, skipped []string, err error) {
+	vols, err := volumeManifests(ctx, base)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	withBlocks := 0
+	for _, v := range vols {
+		if v.man.Params.RefBlocks {
+			withBlocks++
+		}
+	}
+	if withBlocks == 0 {
+		return frags, nil, nil, nil // the first attach
+	}
+	if withBlocks < len(vols) {
+		return nil, nil, nil, fmt.Errorf("%s: some volumes have ref_blocks and some do not; "+
+			"--append cannot tell who is attached, so --rebuild from every fragment", base)
+	}
+	var attached map[string]bool
+	for _, v := range vols {
+		if v.man.RefBlockSamples == nil {
+			return nil, nil, nil, fmt.Errorf("%s: ref_blocks were attached before the attached samples "+
+				"were recorded, so --append cannot tell who is already in them; --rebuild once from "+
+				"every fragment, and --append works from then on", v.name)
+		}
+		in := map[string]bool{}
+		for _, s := range *v.man.RefBlockSamples {
+			if attached == nil || attached[s] {
+				in[s] = true
+			}
+		}
+		attached = in
+	}
+	for _, f := range frags {
+		if attached[f.Meta.SampleID] {
+			skipped = append(skipped, f.Meta.SampleID)
+			continue
+		}
+		attach = append(attach, f)
+		replace = append(replace, f.Meta.SampleID)
+	}
+	return attach, replace, skipped, nil
+}
+
+type namedManifest struct {
+	name string
+	man  *gtstore.VolumeManifest
+}
+
+// volumeManifests reads the manifest of a single volume, or of every volume an
+// archive lists.
+func volumeManifests(ctx context.Context, base string) ([]namedManifest, error) {
+	base = gtstore.TrimStoreSuffix(base)
+	if !gtstore.IsStore(ctx, base) {
+		m, err := gtstore.ReadVolumeManifestContext(ctx, base)
+		if err != nil {
+			return nil, err
+		}
+		return []namedManifest{{base, m}}, nil
+	}
+	st, err := gtstore.OpenStore(ctx, base)
+	if err != nil {
+		return nil, err
+	}
+	var out []namedManifest
+	for _, v := range st.StoreManifest().Volumes {
+		loc := v.Name
+		if !strings.Contains(loc, "://") && !strings.HasPrefix(loc, "/") {
+			loc = strings.TrimSuffix(base, "/") + "/" + loc
+		}
+		m, err := gtstore.ReadVolumeManifestContext(ctx, loc)
+		if err != nil {
+			return nil, fmt.Errorf("volume %s: %w", v.Name, err)
+		}
+		out = append(out, namedManifest{v.Name, m})
+	}
+	return out, nil
+}
+
+func listSome(xs []string, n int) string {
+	if len(xs) <= n {
+		return strings.Join(xs, ", ")
+	}
+	return strings.Join(xs[:n], ", ") + fmt.Sprintf(", ... (%d more)", len(xs)-n)
+}
+
 func hasFragmentMeta(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, gtstore.FragmentMetaFile))
 	return err == nil
@@ -173,6 +302,7 @@ func hasFragmentMeta(dir string) bool {
 func init() {
 	f := refBlockAttachCmd.Flags()
 	f.BoolVar(&attachRebuild, "rebuild", false, "Rebuild ref_blocks from these fragments alone")
+	f.BoolVar(&attachAppend, "append", false, "Add samples not attached yet; skip fragments for samples already attached")
 	f.StringSliceVar(&attachReplace, "replace", nil, "Samples to replace in the existing ref_blocks")
 	f.StringVar(&attachFrom, "from", "", "Read fragment directories from FILE, one per line")
 	f.IntVar(&attachBatch, "batch", gtstore.DefaultAttachBatch, "Fragments merged at once")

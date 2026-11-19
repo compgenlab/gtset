@@ -36,8 +36,9 @@ gtstore create cohort/
 # 3. (optional) Reference blocks from each sample's gVCF -- one job per sample
 gtstore refblock-calc --roster cohort --out frags/S0001 S0001.g.vcf.gz
 
-# 4. (optional) Attach them; --replace S0001 later swaps in a redone sample
-gtstore refblock-attach cohort/ frags/
+# 4. (optional) Attach them; rerun with --append as more gVCFs arrive,
+#    and --replace S0001 swaps in a redone sample
+gtstore refblock-attach --append cohort/ frags/
 
 # 5. Query: sites, samples, or both
 gtstore query cohort --variant chr1:1000:A:T

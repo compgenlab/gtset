@@ -164,18 +164,30 @@ blocks-only volume, so they are answerable too.
 
 ### 6. Add the next batch of gVCFs later
 
-Once a store has blocks, an attach must say what it is doing. To add new
-samples, or redo samples whose gVCF changed, name them with `--replace`:
+Once a store has blocks, an attach must say what it is doing. To add samples
+as their gVCFs arrive, use `--append` with the same fragment directory:
 
 ```bash
 gtstore refblock-calc gvcf/S0011.g.vcf.gz --roster cohort --out frags/S0011
 # ... S0012 to S0020
-gtstore refblock-attach cohort/ frags/S0011 frags/S0012 ... frags/S0020 \
-    --replace S0011,S0012,...,S0020
+gtstore refblock-attach --append cohort/ frags/
 ```
 
-Everyone else's blocks are kept as they are. To rebuild the whole table from
-fragments instead, pass every fragment with `--rebuild`.
+`--append` attaches only the samples not in the store yet and skips fragments
+for samples already attached, saying which, so you never have to list who is
+new. Rerunning it is safe, and it finishes an attach that died partway. On a
+store with no blocks yet it is the first attach, so a job script can use
+`--append` every time.
+
+To redo a sample already attached (its gVCF changed), name it with
+`--replace`, which swaps in the new fragment and keeps everyone else:
+
+```bash
+gtstore refblock-attach cohort/ frags/S0003 --replace S0003
+```
+
+To rebuild the whole table from fragments instead, pass every fragment with
+`--rebuild`.
 
 Each attach rewrites the block files, since they are sorted by position across
 all samples, so attaching in larger batches is cheaper than one sample at a
