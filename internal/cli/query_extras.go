@@ -19,6 +19,7 @@ var (
 	vcfVarQueryShowFormat  []string
 	vcfVarQueryPassing     bool
 	vcfVarQueryReference   string
+	vcfVarQueryNoRefBlocks bool
 )
 
 // splitList flattens repeatable, comma-separated flag values.

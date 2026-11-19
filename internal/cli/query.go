@@ -178,6 +178,10 @@ skipped and named on stderr -- a store read against the wrong assembly
 otherwise answers confidently in the wrong coordinates. A contig the FASTA
 lacks is an error.
 
+--no-ref-blocks answers as though the store had no gVCF reference blocks: they
+are not read at all, so the same store can be compared, and timed, with and
+without them. Against a gVCF it skips the block records.
+
 A VCF given to --variant is read for CHROM, POS, REF and ALT only; --passing
 asks only about its records whose FILTER is PASS or '.'.
 
@@ -361,7 +365,9 @@ func describeStore(cmd *cobra.Command, store gtstore.Store, path string, g gtsto
 		if v := p.Meta[gtstore.MetaKeyReference]; v != "" {
 			fmt.Fprintf(out, "  reference   %s\n", v)
 		}
-		if p.RefBlocks {
+		if p.RefBlocks && vcfVarQueryNoRefBlocks {
+			fmt.Fprintf(out, "  ref blocks  IGNORED (--no-ref-blocks): answering only for variants in the catalog\n")
+		} else if p.RefBlocks {
 			fmt.Fprintf(out, "  ref blocks  yes  (off-catalog positions are answered where a block covers them)\n")
 		} else {
 			fmt.Fprintf(out, "  ref blocks  no   (answers only for variants in the catalog)\n")
@@ -473,7 +479,7 @@ func isGvcfPath(ctx context.Context, path string) bool {
 func warnUnknownSites(cmd *cobra.Command, store gtstore.Store, q gtstore.Query) map[string]bool {
 	blocks := false
 	if b, ok := store.(interface{ HasRefBlocks() bool }); ok {
-		blocks = b.HasRefBlocks()
+		blocks = b.HasRefBlocks() && !q.IgnoreRefBlocks
 	}
 	off := map[string]bool{}
 	for _, locus := range q.Loci {
@@ -541,6 +547,7 @@ func buildQuery(ctx context.Context) (gtstore.Query, *gtstore.Targets, *sampleSe
 	q.RequireInfo = splitList(vcfVarQueryRequireInfo)
 	q.WithInfo = splitList(vcfVarQueryShowInfo)
 	q.WithFormat = splitList(vcfVarQueryShowFormat)
+	q.IgnoreRefBlocks = vcfVarQueryNoRefBlocks
 	t, err := gtstore.ParseTargetsWith(ctx, vcfVarQueryVariants, gtstore.TargetOptions{Passing: vcfVarQueryPassing})
 	if err != nil {
 		return q, nil, nil, err
@@ -1085,6 +1092,8 @@ func init() {
 		"Add these captured FORMAT fields to the output ('*' for all); comma-separated or repeatable")
 	f.BoolVar(&vcfVarQueryPassing, "passing", false,
 		"With a VCF given to --variant, ask only about its records whose FILTER is PASS or '.'")
+	f.BoolVar(&vcfVarQueryNoRefBlocks, "no-ref-blocks", false,
+		"Answer as though no gVCF reference blocks were attached (they are not read): compare a store with and without them")
 	f.StringVar(&vcfVarQueryReference, "reference", "",
 		"Indexed FASTA (.fa/.fa.gz with .fai; bgzip also needs .gzi): skip, and warn about, sites whose REF does not match it")
 	addVerboseFlag(queryCmd, "Report the backend, store provenance and gate effect on stderr")
