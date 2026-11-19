@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/compgenlab/cghts/gtstore"
 	"github.com/compgenlab/gtstore/internal/buildinfo"
@@ -43,7 +44,10 @@ directory, which keeps a gtstore one thing to copy, move or delete. Named with
 a locator, it is used as given, so volumes may live apart when they must.
 
 Given no volumes, every subdirectory of the store that is a readable volume is
-taken, in name order.
+taken, in name order. A subdirectory that is not -- a conversion still running
+or one that failed -- is named on stderr with the reason, so a chromosome cannot
+go missing from the store unannounced. Each volume is then reported as it is
+checked, with its chromosomes, counts and the time it took.
 
 THE VOLUMES MUST AGREE, and this is where that is established rather than
 rediscovered on every query:
@@ -89,11 +93,19 @@ The words, since two of them used to be one word:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		base := strings.TrimSuffix(args[0], "/")
 		volumes := args[1:]
+		errOut := cmd.ErrOrStderr()
 
 		if len(volumes) == 0 {
-			found, err := discoverVolumes(cmd, base)
+			found, skipped, err := discoverVolumes(cmd, base)
 			if err != nil {
 				return err
+			}
+			// Said whether or not -v: a subdirectory that is not a finished
+			// volume -- a conversion still running, or one that failed -- would
+			// otherwise be left out of the store without a word, and the store
+			// would answer "not assayed" for that whole chromosome.
+			for _, sk := range skipped {
+				fmt.Fprintf(errOut, "skipping %s: %s\n", sk.name, sk.why)
 			}
 			if len(found) == 0 {
 				return fmt.Errorf(
@@ -101,11 +113,40 @@ The words, since two of them used to be one word:
 			}
 			volumes = found
 		}
+		fmt.Fprintf(errOut, "adding %d volume(s): %s\n", len(volumes), strings.Join(volumes, ", "))
 
+		// Each volume is opened and reported as it is reached, so a slow or
+		// failing one is visible while it happens rather than after the whole
+		// store is checked. BuildStore opens them again to establish that they
+		// agree; an open reads only footers, so the second costs little.
+		started := time.Now()
+		for i, v := range volumes {
+			t0 := time.Now()
+			fmt.Fprintf(errOut, "  [%d/%d] %s ... ", i+1, len(volumes), v)
+			st, err := gtstore.OpenParquetContext(cmd.Context(), volumeLocator(base, v))
+			if err != nil {
+				fmt.Fprintln(errOut, "failed")
+				return fmt.Errorf("volume %s: %w", v, err)
+			}
+			var chroms []string
+			var sites, calls int64
+			if m := st.VolumeManifest(); m != nil {
+				for _, c := range m.Chromosomes {
+					chroms = append(chroms, c.Name)
+				}
+				sites, calls = m.Counts.Sites, m.Counts.Calls
+			}
+			st.Close()
+			fmt.Fprintf(errOut, "%s, %s sites, %s calls (%s)\n", strings.Join(chroms, " "),
+				comma(sites), comma(calls), time.Since(t0).Round(time.Millisecond))
+		}
 		man, err := gtstore.BuildStore(cmd.Context(), base, volumes,
 			buildinfo.Program(), buildinfo.CommandLine())
 		if err != nil {
 			return err
+		}
+		if vcfVerbose {
+			fmt.Fprintf(errOut, "checked %d volume(s) in %s\n", len(volumes), time.Since(started).Round(time.Millisecond))
 		}
 		if err := gtstore.WriteStoreManifest(base, *man); err != nil {
 			return err
@@ -129,20 +170,65 @@ The words, since two of them used to be one word:
 // caller on object storage knows its own volume names. Naming them is also the
 // safer habit -- a discovered archive silently gains whatever was left in the
 // directory.
-func discoverVolumes(cmd *cobra.Command, base string) ([]string, error) {
+//
+// It also reports what it passed over and why, so a chromosome whose conversion
+// has not finished is visible rather than silently missing from the store.
+func discoverVolumes(cmd *cobra.Command, base string) ([]string, []skippedDir, error) {
 	entries, err := osReadDirNames(base)
 	if err != nil {
-		return nil, fmt.Errorf("listing %s: %w (name the volumes instead)", base, err)
+		return nil, nil, fmt.Errorf("listing %s: %w (name the volumes instead)", base, err)
 	}
 	var out []string
+	var skipped []skippedDir
 	for _, name := range entries {
-		if _, err := gtstore.ReadVolumeManifest(joinLocal(base, name)); err != nil {
+		dir := joinLocal(base, name)
+		m, err := gtstore.ReadVolumeManifest(dir)
+		if err != nil {
+			skipped = append(skipped, skippedDir{name, whyNotVolume(dir, err)})
 			continue
+		}
+		if vcfVerbose {
+			var chroms []string
+			for _, c := range m.Chromosomes {
+				chroms = append(chroms, c.Name)
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "found %s: %s\n", name, strings.Join(chroms, " "))
 		}
 		out = append(out, name)
 	}
 	sort.Strings(out)
-	return out, nil
+	return out, skipped, nil
+}
+
+type skippedDir struct{ name, why string }
+
+// whyNotVolume says why a subdirectory is not a usable volume, in the terms a
+// person running conversions would act on.
+func whyNotVolume(dir string, err error) string {
+	if _, statErr := os.Stat(gtstore.VolumeManifestPath(dir)); statErr != nil {
+		if fileExists(filepath.Join(dir, "calls.parquet")) || fileExists(filepath.Join(dir, "calls")) {
+			return "no manifest.json.gz -- a conversion that is still running or did not finish"
+		}
+		return "not a volume (no manifest.json.gz)"
+	}
+	return "unreadable manifest: " + err.Error()
+}
+
+// volumeLocator resolves a volume name the way BuildStore does: relative to the
+// store unless it carries a scheme or is absolute.
+func volumeLocator(base, v string) string {
+	if strings.Contains(v, "://") || strings.HasPrefix(v, "/") {
+		return v
+	}
+	if strings.Contains(base, "://") {
+		return strings.TrimSuffix(base, "/") + "/" + v
+	}
+	return filepath.Join(base, v)
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 func comma(n int64) string {
@@ -175,3 +261,7 @@ func osReadDirNames(p string) ([]string, error) {
 }
 
 func joinLocal(a, b string) string { return filepath.Join(a, b) }
+
+func init() {
+	addVerboseFlag(createCmd, "Also list each volume found while searching the store directory, and the total time")
+}
