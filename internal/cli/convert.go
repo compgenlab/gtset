@@ -252,6 +252,11 @@ could answer off-catalog positions.
   --depth-bands D,...   break catalog runs at exactly these depths instead
   --info ID[,ID...]     capture these INFO fields into the catalog
   --no-callable         proceed when the input has no DP field at all
+  --declare-info K:T[:N]   capture INFO K even where the header does not declare
+                        it (records without it read as absent) -- for chrX/chrY
+                        files that were not imputed, say; where the header does
+                        declare K, it must match
+  --declare-format K:T[:N] the same for a FORMAT field
   --passing             skip filtered records
   --compression C       zstd (default), snappy, or none
   --row-group-size N    rows per parquet row group
@@ -375,6 +380,12 @@ the order the flags were typed. gtstore summary prints all of it, and
 			return err
 		}
 		samples := first.header.Samples()
+		// Declarations first, so a field the header lacks resolves as if it
+		// were declared; one it has must agree with the declaration.
+		if err := applyDeclarations(first.header, vcfToGtstoreDeclareInfo, vcfToGtstoreDeclareFormat,
+			cmd.ErrOrStderr()); err != nil {
+			return err
+		}
 		// Resolved from the header while it is still open, and BEFORE the
 		// overwrite check below: a misspelled --info must not be the thing that
 		// discovers itself after the previous store has been truncated.
@@ -1297,6 +1308,10 @@ func init() {
 	f.StringSliceVar(&vcfToGtstoreInfo, "info", nil,
 		"INFO field to capture into the catalog, as its own column (repeatable, comma separated, globs allowed)")
 	f.BoolVar(&vcfToGtstoreNoCallable, "no-callable", false, "Accept a source with no DP field; catalog runs will be empty")
+	f.StringArrayVar(&vcfToGtstoreDeclareInfo, "declare-info", nil,
+		"Capture an INFO field the header may not declare, as KEY:Type[:Number] (e.g. IMPUTED:Flag); must match the header where it does")
+	f.StringArrayVar(&vcfToGtstoreDeclareFormat, "declare-format", nil,
+		"Capture a FORMAT field the header may not declare, as KEY:Type[:Number] (e.g. DS:Float:A); must match the header where it does")
 	addPassingFlag(convertCmd, "Only convert passing variants")
 	f.StringVar(&vcfToGtstoreCompression, "compression", "zstd", "Parquet compression: zstd, snappy, or none")
 	f.IntVar(&vcfToGtstoreRowGroupSize, "row-group-size", 250000, "Rows per parquet row group")
