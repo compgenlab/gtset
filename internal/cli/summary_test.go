@@ -140,7 +140,7 @@ func TestVarsummaryDefaultDoesNotScan(t *testing.T) {
 	}
 }
 
-// A store missing its manifest cannot be queried, so gtstore summary has to be
+// A store missing its manifest cannot be queried, so pendium-gt summary has to be
 // able to say why -- otherwise "no escape hatch" leaves a user with an
 // unreadable store and no way to learn anything about it.
 func TestVarsummaryExplainsAMissingManifest(t *testing.T) {

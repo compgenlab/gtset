@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/compgenlab/gtstore/internal/buildinfo"
+	"github.com/compgenlab/pendium/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -21,17 +21,17 @@ func versionString() string {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "gtstore",
+	Use:   "pendium-gt",
 	Short: "Sparse genotype store for cohort VCFs and gVCFs",
-	Long: `gtstore converts cohort VCFs into a sparse, queryable genotype store and
+	Long: `pendium-gt converts cohort VCFs into a sparse, queryable genotype store and
 answers genotype queries against a store or a VCF alike.
 
-  gtstore convert        --out cohort/chr1 chr1.vcf.gz      VCF -> volume
-  gtstore bind           cohort/                            volumes -> gtstore
-  gtstore gvcf-extract   --roster cohort --out frags/S1 S1.g.vcf.gz
-  gtstore gvcf-attach    cohort/ frags/                     gVCF blocks -> store
-  gtstore query          cohort --variant chr1:1000:A:T     genotypes
-  gtstore summary        cohort                             what a store holds`,
+  pendium-gt convert       --out cohort/chr1 chr1.vcf.gz     VCF -> volume
+  pendium-gt bind          cohort/                           volumes -> pendium
+  pendium-gt gvcf-extract  --roster cohort --out frags/S1 S1.g.vcf.gz
+  pendium-gt gvcf-attach   cohort/ frags/                    gVCF blocks -> pendium
+  pendium-gt query         cohort --variant chr1:1000:A:T    genotypes
+  pendium-gt summary       cohort                            what a pendium holds`,
 	// Silence usage only once we reach a command's RunE. Cobra validates args
 	// and flags *before* PersistentPreRun, so parsing errors (e.g. a missing
 	// argument) still print usage, while errors during execution do not.
@@ -59,8 +59,8 @@ func init() {
 {{end}}{{if .Annotations}}{{with (index .Annotations "since")}}Since: {{.}}
 
 {{end}}{{end}}{{if or .Runnable .HasSubCommands}}{{.UsageString}}{{end}}`
-	rootCmd.SetHelpTemplate(helpBody + "\ngtstore " + versionString() +
-		" https://github.com/compgenlab/gtstore\n")
+	rootCmd.SetHelpTemplate(helpBody + "\npendium-gt " + versionString() +
+		" https://github.com/compgenlab/pendium\n")
 
 	InitCmd(rootCmd)
 }

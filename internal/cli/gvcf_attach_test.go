@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// homRefSamplesAt runs gtstore query --hom-ref for one exact locus and returns the
+// homRefSamplesAt runs pendium-gt query --hom-ref for one exact locus and returns the
 // samples reported 0/0.
 func homRefSamplesAt(t *testing.T, input, locus string) []string {
 	t.Helper()
@@ -155,7 +155,7 @@ func TestVarsummaryReportsAttachedRefBlocks(t *testing.T) {
 	}
 	for _, want := range []string{"ref blocks yes", "ref_blocks"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("gtstore summary is missing %q:\n%s", want, out)
+			t.Errorf("pendium-gt summary is missing %q:\n%s", want, out)
 		}
 	}
 }
@@ -163,7 +163,7 @@ func TestVarsummaryReportsAttachedRefBlocks(t *testing.T) {
 // A sample whose gVCF was never attached answers not_assayed off the catalog
 // exactly as one whose gVCF reported nothing there, so summary has to say which
 // samples' fragments are in the table -- or a store attached from 9,800 of
-// 10,000 gVCFs reads like one attached from all of them. compgenlab/gtstore#3.
+// 10,000 gVCFs reads like one attached from all of them. compgenlab/pendium-gt#3.
 func TestVarsummaryNamesSamplesWithoutRefBlocks(t *testing.T) {
 	roster, s1 := refBlocksFixture(t, "S1")
 	frag := filepath.Join(t.TempDir(), "S1")

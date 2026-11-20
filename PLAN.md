@@ -30,20 +30,20 @@ What shipped:
 - The `.tbi` header now records its preset. It was hardcoded to generic, so nothing
   could apply VCF rules on read. **Earlier indexes still read as generic and must
   be rewritten.**
-- `gtstore` selects by overlap via a `ref_end` column; pruning's lower bound comes
+- `pendium-gt` selects by overlap via a `ref_end` column; pruning's lower bound comes
   from `max(ref_end)`, since a matching record may start below a row group's
   minimum.
 - `vcf-strip` refuses to drop `INFO/END` from a gVCF without `--force-end`;
-  `vcf-tobed` reports true spans and skips reference blocks; `gtstore convert`
+  `vcf-tobed` reports true spans and skips reference blocks; `pendium-gt convert`
   records the span.
 
 ## 2. gVCF support — querying DONE; conversion deliberately refused
 
-**`gtstore query` reads gVCFs.** A reference block asserts that a sample was called
+**`pendium-gt query` reads gVCFs.** A reference block asserts that a sample was called
 reference across a span at at least `MIN_DP`, and that is now what it reports:
 
 ```
-$ gtstore query --variant chr1:2000-2100 --hom-ref --min-dp 10 sample.g.vcf.gz
+$ pendium-gt query --variant chr1:2000-2100 --hom-ref --min-dp 10 sample.g.vcf.gz
 chrom  pos  ref  alt  sample  gt   dp  min_dp  ad_ref  ad_alt  gq
 chr1   100  A    .    S1      0/0  .   28      .       .       60
 ```
@@ -58,17 +58,17 @@ over `DP` for that reason: `Missing` passes every gate by design, so a block-der
 call with no `DP` would otherwise be admitted unconditionally — the gate silently
 doing nothing on exactly the state gVCF makes trustworthy.
 
-**`gtstore convert` refuses a gVCF.** It used to convert one happily and produce a
+**`pendium-gt convert` refuses a gVCF.** It used to convert one happily and produce a
 store wrong in three ways nothing downstream could detect: `<NON_REF>` in the sites
 catalog, `AC`/`AN` counting a block allele as an allele, and every block reduced to
 its first base.
 
-### Conversion is a cohort operation — deferred to a later gtstore release
+### Conversion is a cohort operation — deferred to a later pendium-gt release
 
 Not a stopgap, and not a single-file feature we simply have not written yet. **The
 unit of gVCF conversion is a *set* of gVCFs, converted together.** A gVCF is
 single-sample by construction, so converting one produces a one-sample store — which
-answers nothing a direct `gtstore query` against that gVCF does not already answer,
+answers nothing a direct `pendium-gt query` against that gVCF does not already answer,
 faster and with no conversion step. The value of a store is the cohort: many samples
 at one locus, which is exactly what one gVCF cannot give.
 
@@ -96,7 +96,7 @@ What it needs, in rough order of difficulty:
   emission source — it is driven by the sites catalog, so it emits nothing
   off-catalog no matter what the metadata says.
 
-Until then `gtstore convert` refuses a gVCF, which is the right answer rather than a
+Until then `pendium-gt convert` refuses a gVCF, which is the right answer rather than a
 placeholder: the store it would write is wrong in ways nothing downstream can detect.
 
 The refusal keys on **a reference block record**, not on the header. It once used
@@ -107,7 +107,7 @@ GATK-derived callsets. `##ALT=<ID=*>` is worse than incidental: VCF 4.5 gives th
 gVCF unspecified allele and the ordinary spanning-deletion allele the same ALT ID,
 so no header test can separate them even in principle. `vcf-strip` still has to
 decide from the header, because it writes its output header before reading a record;
-`gtstore convert` does not, and a failed conversion `Discard()`s, so reading first
+`pendium-gt convert` does not, and a failed conversion `Discard()`s, so reading first
 costs nothing recoverable. A mixed `G,<NON_REF>` record is a variant record and
 converts, with the block allele masked out the way any non-focal alternate is.
 
@@ -122,16 +122,16 @@ directly is now the ground truth a future blocks store gets checked against.
 
 `internal/cli/bench_test.go` measures wall time, which is hardware-bound — the
 durable claim it supports is the *ratio* (bulk flat vs per-locus linear), not the
-milliseconds. Counters inside `gtstore` would give numbers that survive a machine
+milliseconds. Counters inside `pendium-gt` would give numbers that survive a machine
 change. Not required by anything.
 
 ## 4. Indel normalization — not started, and mostly not ours
 
-`gtstore convert` splits multiallelics but does **not** normalize allele
+`pendium-gt convert` splits multiallelics but does **not** normalize allele
 representation. Splitting and normalization are routinely conflated because one
 `bcftools norm` invocation does both; they are separate operations and only the
 first is handled here. `bcftools norm -m -both` — a common pre-step — does the
-half gtstore already does and none of the half it does not.
+half pendium-gt already does and none of the half it does not.
 
 The exposure is exact-locus matching. `SameLocus` canonicalizes the chromosome
 name and then compares `Pos`/`Ref`/`Alt` byte-for-byte
@@ -209,14 +209,14 @@ left-alignment is the project; detection is the part that pays for itself.
 ### The counter-argument, recorded so it is not rediscovered
 
 `bcftools norm -f ref.fa` already does this correctly, is universally available, and
-runs upstream of conversion. The case for owning it in gtstore is **not** capability —
+runs upstream of conversion. The case for owning it in pendium-gt is **not** capability —
 it is that a store should be self-describing about whether it was normalized and
 against what, so two stores can be known to be joinable. That is a metadata goal
 that the detector above serves at a fraction of the cost. Do not build the
 realignment for the capability alone.
 
 Also note that pre-normalizing with `-m -both` is now actively counterproductive:
-gtstore tallies `AC`/`AN` from the record's raw GTs before recoding
+pendium-gt tallies `AC`/`AN` from the record's raw GTs before recoding
 (`AddAlleleCounts`, `cghts/gtstore/vcfrecord.go:139`), so it sees both alleles of a
 `1/2`. A record arriving already split with `.` padding has lost that, and `AN` —
 and therefore `AF` in `--format vcf` — comes out low at every multiallelic site.
@@ -227,14 +227,14 @@ Recommend `bcftools norm -f ref.fa` with no `-m`.
 ## Decided against — do not re-litigate
 
 - **`vcf-gtmatrix` as a separate command.** A VCF with GT already *is* the wide
-  matrix; `gtstore query --format vcf` covers it.
+  matrix; `pendium-gt query --format vcf` covers it.
 - **`--classify`, `--min-gq`, `--region`.** The genotype in the output already says
   which case occurred, so there is no state column to interpret. `--min-gq` was
   *broken*, not merely redundant: callable runs are built from depth alone, so a store
   retains no GQ for a genotype it never wrote down and could not gate a reference call
   where a VCF would — the backends silently disagreed. `--region` folded into
   `--variant`.
-- **Page-level pruning in `gtstore`.** Retired by measurement: the bulk path is flat
+- **Page-level pruning in `cghts/gtstore`.** Retired by measurement: the bulk path is flat
   out to 1000 targets, so page pruning would only shave the single-locus case — not
   worth added risk in code that must never skip a matching row group.
 - **Multi-locus tabix seeking in `VcfStore`.** Only pays off for panel queries against
