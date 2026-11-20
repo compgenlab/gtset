@@ -29,15 +29,17 @@ import (
 // single volume. This does not promote anything to a different kind of object;
 // it composes volumes into a larger archive of the same kind.
 
-var createCmd = &cobra.Command{
+var bindCmd = &cobra.Command{
 	Annotations: map[string]string{"since": "v0.1.0"},
-	Use:         "create <store-dir> [volume ...]",
-	Short:       "Write a store manifest over volumes that already exist",
-	Long: `Combine existing volumes into one gtstore.
+	Use:         "bind <store-dir> [volume ...]",
+	Short:       "Bind existing volumes into one gtstore",
+	Long: `Bind existing volumes into one gtstore: write its manifest over them.
+No genotype is read or rewritten; this checks that the volumes agree and
+records them as one store.
 
-  gtstore create cohort/ chr1 chr2 chr3
-  gtstore create s3://bucket/cohort chr1 chr2
-  gtstore create cohort/
+  gtstore bind cohort/ chr1 chr2 chr3
+  gtstore bind s3://bucket/cohort chr1 chr2
+  gtstore bind cohort/
 
 A volume named without a scheme or a leading slash is relative to the store
 directory, which keeps a gtstore one thing to copy, move or delete. Named with
@@ -263,5 +265,5 @@ func osReadDirNames(p string) ([]string, error) {
 func joinLocal(a, b string) string { return filepath.Join(a, b) }
 
 func init() {
-	addVerboseFlag(createCmd, "Also list each volume found while searching the store directory, and the total time")
+	addVerboseFlag(bindCmd, "Also list each volume found while searching the store directory, and the total time")
 }

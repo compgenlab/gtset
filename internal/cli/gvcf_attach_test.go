@@ -49,10 +49,10 @@ func TestAttachedStoreAnswersOffCatalogLikeTheGvcfs(t *testing.T) {
 
 			frags := filepath.Join(dir, "frags")
 			for name, g := range map[string]string{"S1": s1, "S2": s2} {
-				args := append([]string{"refblock-calc", "--roster", roster}, mode.flags...)
+				args := append([]string{"gvcf-extract", "--roster", roster}, mode.flags...)
 				runVcf(t, append(args, "--out", filepath.Join(frags, name), g)...)
 			}
-			runVcf(t, "refblock-attach", roster, frags)
+			runVcf(t, "gvcf-attach", roster, frags)
 
 			gvcfs := map[string]string{}
 			for name, g := range map[string]string{"S1": s1, "S2": s2} {
@@ -90,8 +90,8 @@ func TestAttachedStoreAnswersOffCatalogLikeTheGvcfs(t *testing.T) {
 func TestBlocksOnAChromosomeWithoutSitesAreAttached(t *testing.T) {
 	roster, s1 := refBlocksFixture(t, "S1")
 	frag := filepath.Join(t.TempDir(), "S1")
-	runVcf(t, "refblock-calc", "--roster", roster, "--out", frag, s1)
-	runVcf(t, "refblock-attach", roster, frag)
+	runVcf(t, "gvcf-extract", "--roster", roster, "--out", frag, s1)
+	runVcf(t, "gvcf-attach", roster, frag)
 	if got := homRefSamplesAt(t, roster, "chr2:150:C:T"); !reflect.DeepEqual(got, []string{"S1"}) {
 		t.Errorf("chr2:150, covered by S1's block on a chromosome with no catalog site: got %v", got)
 	}
@@ -100,18 +100,18 @@ func TestBlocksOnAChromosomeWithoutSitesAreAttached(t *testing.T) {
 func TestAttachRefusesASecondAttachWithoutRebuildOrReplace(t *testing.T) {
 	roster, s1 := refBlocksFixture(t, "S1")
 	frag := filepath.Join(t.TempDir(), "S1")
-	runVcf(t, "refblock-calc", "--roster", roster, "--out", frag, s1)
-	runVcf(t, "refblock-attach", roster, frag)
+	runVcf(t, "gvcf-extract", "--roster", roster, "--out", frag, s1)
+	runVcf(t, "gvcf-attach", roster, frag)
 
-	if err := runVcfErr(t, "refblock-attach", roster, frag); err == nil ||
+	if err := runVcfErr(t, "gvcf-attach", roster, frag); err == nil ||
 		!strings.Contains(err.Error(), "already has ref_blocks") {
 		t.Errorf("a second attach: err = %v", err)
 	}
-	runVcf(t, "refblock-attach", "--rebuild", roster, frag)
-	runVcf(t, "refblock-attach", "--replace", "S1", roster, frag)
+	runVcf(t, "gvcf-attach", "--rebuild", roster, frag)
+	runVcf(t, "gvcf-attach", "--replace", "S1", roster, frag)
 
 	// Removing S1 leaves an empty table, so nobody is reference off the catalog.
-	runVcf(t, "refblock-attach", "--replace", "S1", roster)
+	runVcf(t, "gvcf-attach", "--replace", "S1", roster)
 	if got := homRefSamplesAt(t, roster, "chr1:150:C:T"); len(got) != 0 {
 		t.Errorf("after removing S1's blocks, chr1:150 still reports %v", got)
 	}
@@ -147,8 +147,8 @@ func TestAttachExpandsADirectoryAndAList(t *testing.T) {
 func TestVarsummaryReportsAttachedRefBlocks(t *testing.T) {
 	roster, s1 := refBlocksFixture(t, "S1")
 	frag := filepath.Join(t.TempDir(), "S1")
-	runVcf(t, "refblock-calc", "--roster", roster, "--out", frag, s1)
-	runVcf(t, "refblock-attach", roster, frag)
+	runVcf(t, "gvcf-extract", "--roster", roster, "--out", frag, s1)
+	runVcf(t, "gvcf-attach", roster, frag)
 	out := runVcf(t, "summary", roster)
 	if strings.Contains(out, "WARNING") {
 		t.Errorf("a store attached now carries a gap warning:\n%s", out)
@@ -167,8 +167,8 @@ func TestVarsummaryReportsAttachedRefBlocks(t *testing.T) {
 func TestVarsummaryNamesSamplesWithoutRefBlocks(t *testing.T) {
 	roster, s1 := refBlocksFixture(t, "S1")
 	frag := filepath.Join(t.TempDir(), "S1")
-	runVcf(t, "refblock-calc", "--roster", roster, "--out", frag, s1)
-	runVcf(t, "refblock-attach", roster, frag)
+	runVcf(t, "gvcf-extract", "--roster", roster, "--out", frag, s1)
+	runVcf(t, "gvcf-attach", roster, frag)
 
 	out := runVcf(t, "summary", roster)
 	if !strings.Contains(out, "from 1 of 2 samples; not attached: S2") {
@@ -182,8 +182,8 @@ func TestVarsummaryNamesSamplesWithoutRefBlocks(t *testing.T) {
 	// Attaching S2 as well makes it everyone.
 	_, s2 := refBlocksFixture(t, "S2")
 	frag2 := filepath.Join(t.TempDir(), "S2")
-	runVcf(t, "refblock-calc", "--roster", roster, "--out", frag2, s2)
-	runVcf(t, "refblock-attach", "--replace", "S2", roster, frag2)
+	runVcf(t, "gvcf-extract", "--roster", roster, "--out", frag2, s2)
+	runVcf(t, "gvcf-attach", "--replace", "S2", roster, frag2)
 	if out := runVcf(t, "summary", roster); !strings.Contains(out, "from all 2 samples") {
 		t.Errorf("after attaching S2 too:\n%s", out)
 	}
@@ -195,12 +195,12 @@ func TestVarsummaryNamesSamplesWithoutRefBlocksOnAnArchive(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "cohort")
 	runVcf(t, "convert", "--out", filepath.Join(base, "chr1"), "testdata/multi_chr1.vcf")
 	runVcf(t, "convert", "--out", filepath.Join(base, "chr2"), "testdata/multi_chr2.vcf")
-	runVcf(t, "create", base)
+	runVcf(t, "bind", base)
 
 	_, s1 := refBlocksFixture(t, "S1")
 	frag := filepath.Join(t.TempDir(), "S1")
-	runVcf(t, "refblock-calc", "--roster", base, "--out", frag, s1)
-	runVcf(t, "refblock-attach", base, frag)
+	runVcf(t, "gvcf-extract", "--roster", base, "--out", frag, s1)
+	runVcf(t, "gvcf-attach", base, frag)
 
 	out := runVcf(t, "summary", base)
 	for _, want := range []string{"ref blocks    yes", "from 1 of 2 samples; not attached: S2"} {

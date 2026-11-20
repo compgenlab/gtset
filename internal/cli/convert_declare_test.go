@@ -40,7 +40,7 @@ func TestDeclaredFieldsMakeVolumesAgree(t *testing.T) {
 
 	runVcf(t, append([]string{"convert", "--out", filepath.Join(store, "chr1")}, append(flags, chr1)...)...)
 	runVcf(t, append([]string{"convert", "--force", "--out", filepath.Join(store, "chrX")}, append(flags, chrX)...)...)
-	runVcf(t, "create", store)
+	runVcf(t, "bind", store)
 
 	// chrX's site carries no IMPUTED, so excluding imputed sites keeps it, and
 	// chr1's imputed site at 200 is gone -- one query across both volumes.
