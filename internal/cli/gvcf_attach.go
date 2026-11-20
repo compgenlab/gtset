@@ -11,7 +11,7 @@ import (
 
 	"github.com/compgenlab/cghts/gtstore"
 	"github.com/compgenlab/cghts/iosource"
-	"github.com/compgenlab/gtstore/internal/buildinfo"
+	"github.com/compgenlab/pendium/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -28,13 +28,13 @@ var gvcfAttachCmd = &cobra.Command{
 	Annotations: map[string]string{"since": "v0.1.0"},
 	Use:         "gvcf-attach <store> [fragment ...]",
 	Short:       "Merge reference-block fragments into a store's ref_blocks",
-	Long: `Merge the per-sample fragments gtstore gvcf-extract wrote into a store's ref_blocks
+	Long: `Merge the per-sample fragments pendium-gt gvcf-extract wrote into a store's ref_blocks
 table, so the store answers at positions off its catalog.
 
-  gtstore gvcf-attach cohort/ frags/
-  gtstore gvcf-attach cohort/ --from fragments.txt
-  gtstore gvcf-attach cohort/ frags/ --append
-  gtstore gvcf-attach cohort/ frags/S0042 --replace S0042
+  pendium-gt gvcf-attach cohort/ frags/
+  pendium-gt gvcf-attach cohort/ --from fragments.txt
+  pendium-gt gvcf-attach cohort/ frags/ --append
+  pendium-gt gvcf-attach cohort/ frags/S0042 --replace S0042
 
 A fragment argument is a fragment directory, or a local directory whose
 subdirectories are fragments; --from reads one per line, for when there are

@@ -26,7 +26,7 @@ import (
 // single-locus query -- the reason the Store API collapsed to one Calls method,
 // and so far an arithmetic argument rather than a measurement. Second, how the
 // Parquet store compares with querying the plain VCF it came from, which
-// docs/gtstore convert.md currently states outright has never been measured.
+// docs/convert.md currently states outright has never been measured.
 //
 // Wall time and row counts only. Bytes read and row groups decoded would be the
 // more durable numbers, but they need a counter inside gtstore, which lives in
@@ -211,7 +211,7 @@ func BenchmarkQueryPanel(b *testing.B) {
 	}
 }
 
-// BenchmarkStoreVsVcf is the comparison docs/gtstore convert.md says has never been
+// BenchmarkStoreVsVcf is the comparison docs/convert.md says has never been
 // made: the same panel query against the store and against the VCF it came from.
 func BenchmarkStoreVsVcf(b *testing.B) {
 	nSamples, nSites, rowGroup := benchSizes()

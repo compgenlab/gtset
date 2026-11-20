@@ -1,4 +1,4 @@
-module github.com/compgenlab/gtstore
+module github.com/compgenlab/pendium
 
 go 1.24.9
 

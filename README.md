@@ -1,7 +1,9 @@
-# gtstore
+# Pendium
 
-A sparse, queryable genotype store for cohort VCFs, and the command-line tool
-that builds and queries it.
+A sparse, queryable genotype store for cohort VCFs, and `pendium-gt`, the
+command-line tool that builds and queries it. A **pendium** is a set of
+**volumes** (normally one chromosome each), each optionally split into
+coordinate **shards**.
 
 A store keeps only ALT-carrying genotypes plus enough context to tell a
 confidently-called reference genotype (`0/0`) from a position that was never
@@ -11,12 +13,15 @@ per sample, so a store can also answer at positions no variant record mentions.
 
 The format and its query API live in
 [`cghts/gtstore`](https://github.com/compgenlab/cghts); this repo is the CLI.
+The project was called gtstore, and the format kept that name on disk: a
+pendium's top-level marker is `gtstore.json.gz` and its metadata keys are
+`gtstore.*`, so stores written before the rename still open.
 General VCF tooling is in [`cgkit`](https://github.com/compgenlab/cgkit).
 
 ## Building
 
 ```bash
-make build     # bin/gtstore.{darwin,linux}_{arm64,amd64}, windows_amd64.exe
+make build     # bin/pendium-gt.{darwin,linux}_{arm64,amd64}, windows_amd64.exe
 make test
 ```
 
@@ -27,29 +32,29 @@ Step by step, with the gVCF part optional and adding gVCFs in batches:
 
 ```bash
 # 1. Convert the joint-called pVCF, one volume per chromosome
-gtstore convert --out cohort/chr1 chr1.vcf.gz
-gtstore convert --out cohort/chr2 chr2.vcf.gz
+pendium-gt convert --out cohort/chr1 chr1.vcf.gz
+pendium-gt convert --out cohort/chr2 chr2.vcf.gz
 
 # 2. Combine the volumes into one store
-gtstore bind cohort/
+pendium-gt bind cohort/
 
 # 3. (optional) Reference blocks from each sample's gVCF -- one job per sample
-gtstore gvcf-extract --roster cohort --out frags/S0001 S0001.g.vcf.gz
+pendium-gt gvcf-extract --roster cohort --out frags/S0001 S0001.g.vcf.gz
 
 # 4. (optional) Attach them; rerun with --append as more gVCFs arrive,
 #    and --replace S0001 swaps in a redone sample
-gtstore gvcf-attach --append cohort/ frags/
+pendium-gt gvcf-attach --append cohort/ frags/
 
 # 5. Query: sites, samples, or both
-gtstore query cohort --variant chr1:1000:A:T
-gtstore query cohort --variant panel.bed --sample S0001 --hom-ref
-gtstore query cohort.vcf.gz --variant chr1:1000:A:T   # same answer, from the VCF
+pendium-gt query cohort --variant chr1:1000:A:T
+pendium-gt query cohort --variant panel.bed --sample S0001 --hom-ref
+pendium-gt query cohort.vcf.gz --variant chr1:1000:A:T   # same answer, from the VCF
 
 # Describe a store or a VCF without reading genotypes
-gtstore summary cohort
+pendium-gt summary cohort
 ```
 
-Run `gtstore <command> --help` for flags. `--profile=FILE` writes a CPU profile
+Run `pendium-gt <command> --help` for flags. `--profile=FILE` writes a CPU profile
 from anywhere on the command line.
 
 ## Commands

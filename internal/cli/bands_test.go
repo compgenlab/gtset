@@ -149,7 +149,7 @@ chr1	2000	.	G	A	50	PASS	.	GT:DP	0/0:40	0/1:60
 chr1	3000	.	G	A	50	PASS	.	GT:DP	0/0:45	0/1:60
 `
 
-// homRefRows runs gtstore query --hom-ref over the whole contig at one gate and
+// homRefRows runs pendium-gt query --hom-ref over the whole contig at one gate and
 // returns S1's reference rows as sample@pos. --sample rather than a
 // region, because a region query on a plain VCF needs a tabix index.
 func homRefRows(t *testing.T, input, gate string) map[string]bool {
