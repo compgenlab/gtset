@@ -60,7 +60,7 @@ func parseDeclaration(flag, spec string, allowFlag bool) (*vcf.AnnotationDef, er
 		return nil, fmt.Errorf("%s %s: a Flag has Number=0", flag, key)
 	}
 	return &vcf.AnnotationDef{ID: key, Type: typ, Number: number,
-		Description: "Declared by gtstore convert " + flag + "; not in the source header"}, nil
+		Description: "Declared by pendium-gt convert " + flag + "; not in the source header"}, nil
 }
 
 // applyDeclarations adds declared fields to a header that lacks them, checks

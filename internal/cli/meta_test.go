@@ -181,7 +181,7 @@ func TestVarSummaryOmitsAbsentMetadata(t *testing.T) {
 }
 
 // -v reports the two keys that change how the rows should be read, and only
-// those; the rest is catalogue that belongs in gtstore summary.
+// those; the rest is catalogue that belongs in pendium-gt summary.
 func TestVarQueryVerboseReportsDatasetAndReference(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "store")
 	runVcf(t, "convert", "--out", base,

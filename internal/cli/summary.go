@@ -29,7 +29,7 @@ var summaryCmd = &cobra.Command{
 	Long: `Report what a variant source contains, without querying genotypes.
 
 The input may be a VCF (plain or bgzipped) or a Parquet store written by
-gtstore convert, local or remote. The backend is inferred from the path; override
+pendium-gt convert, local or remote. The backend is inferred from the path; override
 with --store.
 
 The default report never reads a single record. It is O(header) on both
@@ -166,7 +166,7 @@ func writeSummary(cmd *cobra.Command, out *bufio.Writer, store gtstore.Store, pa
 func summarizeMultiVolume(out io.Writer, s *gtstore.GTStore, path string) error {
 	man := s.StoreManifest()
 	fmt.Fprintf(out, "\n%s\n", path)
-	fmt.Fprintf(out, "  a gtstore of %d volumes over %d samples\n\n", len(man.Volumes), len(man.Samples))
+	fmt.Fprintf(out, "  a pendium of %d volumes over %d samples\n\n", len(man.Volumes), len(man.Samples))
 
 	var sites, calls int64
 	fmt.Fprintf(out, "  %-24s %-24s %12s %12s\n", "VOLUME", "CHROMOSOMES", "SITES", "CALLS")
@@ -258,7 +258,7 @@ func summarizeStore(out *bufio.Writer, errOut interface{ Write([]byte) (int, err
 	m := s.VolumeManifest()
 	p := s.Provenance()
 
-	fmt.Fprintf(out, "source     gtstore volume %s\n", path)
+	fmt.Fprintf(out, "source     pendium volume %s\n", path)
 	fmt.Fprintf(out, "samples    %d\n", len(samples))
 	fmt.Fprintf(out, "created    %s\n", m.Created.Format("2006-01-02 15:04:05 MST"))
 	if m.Program != "" {
@@ -467,7 +467,7 @@ func describeUnreadableStore(ctx context.Context, path string, openErr error) (s
 	fmt.Fprintf(&b, "\na table with a row count was finalized; one marked NEVER FINALIZED is\n")
 	fmt.Fprintf(&b, "where the conversion stopped. Either way a finished table says nothing\n")
 	fmt.Fprintf(&b, "about how much of the input went into it -- that is what the manifest\n")
-	fmt.Fprintf(&b, "records, and why it is required. Re-convert with gtstore convert --force.\n\n")
+	fmt.Fprintf(&b, "records, and why it is required. Re-convert with pendium-gt convert --force.\n\n")
 	return b.String(), true
 }
 

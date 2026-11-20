@@ -6,7 +6,7 @@ import (
 	"runtime/pprof"
 	"strings"
 
-	"github.com/compgenlab/gtstore/internal/cli"
+	"github.com/compgenlab/pendium/internal/cli"
 )
 
 // profileFlag is intercepted here rather than declared on the root command,
@@ -62,7 +62,7 @@ func run() int {
 // remainder along with the filename.
 //
 // It is scanned for anywhere rather than only at args[1]: the positional form
-// meant "gtstore summary --profile=cpu.prof cohort" -- the order anyone who has
+// meant "pendium-gt summary --profile=cpu.prof cohort" -- the order anyone who has
 // used a CLI would reach for -- died with "unknown flag" instead of profiling.
 // Everything after a bare "--" is a positional argument by convention and is
 // left alone.

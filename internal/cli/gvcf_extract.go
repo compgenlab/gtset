@@ -9,7 +9,7 @@ import (
 	"github.com/compgenlab/cghts/gtstore"
 	_ "github.com/compgenlab/cghts/gtstore/sinks3" // --out s3://...
 	"github.com/compgenlab/cghts/vcf"
-	"github.com/compgenlab/gtstore/internal/buildinfo"
+	"github.com/compgenlab/pendium/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +26,7 @@ var (
 var gvcfExtractCmd = &cobra.Command{
 	Annotations: map[string]string{"since": "v0.1.0"},
 	Use:         "gvcf-extract <sample.g.vcf.gz>",
-	Short:       "Extract one sample's reference blocks from a gVCF, for a gtstore",
+	Short:       "Extract one sample's reference blocks from a gVCF, for a pendium",
 	Long: `Read one sample's gVCF and write its reference blocks as a FRAGMENT: the
 positive coverage claims a store's ref_blocks table is built from.
 
@@ -37,9 +37,9 @@ how that is captured. Genotypes still come from the pVCF; a fragment holds no
 ALT calls, only spans where the sample was observed to be reference.
 
 Run it once per sample, independently -- it is single-sample and streaming, and
-the fragments are merged into a store afterwards (gtstore gvcf-attach).
+the fragments are merged into a store afterwards (pendium-gt gvcf-attach).
 
-  gtstore gvcf-extract S0001.g.vcf.gz --roster cohort/ --out frags/S0001
+  pendium-gt gvcf-extract S0001.g.vcf.gz --roster cohort/ --out frags/S0001
 
 What is kept:
 
@@ -199,7 +199,7 @@ func rosterOf(cmd *cobra.Command, locator string) ([]string, gtstore.ManifestPar
 		return samples, s.VolumeManifest().Params, nil
 	}
 	return nil, gtstore.ManifestParams{}, fmt.Errorf(
-		"--roster %s is not a gtstore; fragments are attached to a store, not a VCF", locator)
+		"--roster %s is not a pendium; fragments are attached to a store, not a VCF", locator)
 }
 
 // refBlocksSettings resolves the gate and bands a fragment is built with.
