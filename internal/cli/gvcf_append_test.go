@@ -17,7 +17,7 @@ func fragmentsFor(t *testing.T, roster string, samples ...string) []string {
 	for _, s := range samples {
 		_, g := refBlocksFixture(t, s)
 		f := filepath.Join(dir, s)
-		runVcf(t, "refblock-calc", "--roster", roster, "--out", f, g)
+		runVcf(t, "gvcf-extract", "--roster", roster, "--out", f, g)
 		out = append(out, f)
 	}
 	return out
@@ -30,12 +30,12 @@ func TestAttachAppendAddsOnlyNewSamples(t *testing.T) {
 	roster, _ := refBlocksFixture(t, "S1")
 	frags := fragmentsFor(t, roster, "S1", "S2")
 
-	runVcf(t, "refblock-attach", "--append", roster, frags[0])
+	runVcf(t, "gvcf-attach", "--append", roster, frags[0])
 	if got := homRefSamplesAt(t, roster, "chr1:150:C:T"); !reflect.DeepEqual(got, []string{"S1"}) {
 		t.Fatalf("after the first --append: %v", got)
 	}
 
-	out := runVcf(t, "refblock-attach", "--append", roster, frags[0], frags[1])
+	out := runVcf(t, "gvcf-attach", "--append", roster, frags[0], frags[1])
 	if !strings.Contains(out, "skipping 1 sample(s) already attached: S1") ||
 		!strings.Contains(out, "appending 1 sample(s)") {
 		t.Errorf("second --append did not say what it did:\n%s", out)
@@ -48,14 +48,14 @@ func TestAttachAppendAddsOnlyNewSamples(t *testing.T) {
 	}
 
 	// Everything already there: a no-op, not an error.
-	if out := runVcf(t, "refblock-attach", "--append", roster, frags[0], frags[1]); !strings.Contains(out, "nothing to append") {
+	if out := runVcf(t, "gvcf-attach", "--append", roster, frags[0], frags[1]); !strings.Contains(out, "nothing to append") {
 		t.Errorf("rerun:\n%s", out)
 	}
 	if got := homRefSamplesAt(t, roster, "chr1:150:C:T"); !reflect.DeepEqual(got, []string{"S1", "S2"}) {
 		t.Errorf("after a no-op --append: %v", got)
 	}
 
-	if err := runVcfErr(t, "refblock-attach", "--append", "--rebuild", roster, frags[0]); err == nil ||
+	if err := runVcfErr(t, "gvcf-attach", "--append", "--rebuild", roster, frags[0]); err == nil ||
 		!strings.Contains(err.Error(), "alternatives") {
 		t.Errorf("--append with --rebuild: %v", err)
 	}
@@ -68,10 +68,10 @@ func TestAttachAppendOnAnArchiveFinishesAPartialAttach(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "cohort")
 	runVcf(t, "convert", "--out", filepath.Join(base, "chr1"), "testdata/multi_chr1.vcf")
 	runVcf(t, "convert", "--out", filepath.Join(base, "chr2"), "testdata/multi_chr2.vcf")
-	runVcf(t, "create", base)
+	runVcf(t, "bind", base)
 	frags := fragmentsFor(t, base, "S1", "S2")
 
-	runVcf(t, "refblock-attach", "--append", base, frags[0])
+	runVcf(t, "gvcf-attach", "--append", base, frags[0])
 	// S2 reaches chr1's volume only, as if the run had died after it. (A
 	// chr1-only fragment, since attaching straight to one volume would make
 	// it take chr2 as well.)
@@ -86,13 +86,13 @@ func TestAttachAppendOnAnArchiveFinishesAPartialAttach(t *testing.T) {
 		t.Fatal(err)
 	}
 	partial := filepath.Join(t.TempDir(), "S2")
-	runVcf(t, "refblock-calc", "--roster", base, "--out", partial, g)
-	runVcf(t, "refblock-attach", "--replace", "S2", filepath.Join(base, "chr1"), partial)
+	runVcf(t, "gvcf-extract", "--roster", base, "--out", partial, g)
+	runVcf(t, "gvcf-attach", "--replace", "S2", filepath.Join(base, "chr1"), partial)
 	if got := homRefSamplesAt(t, base, "chr2:150:C:T"); !reflect.DeepEqual(got, []string{"S1"}) {
 		t.Fatalf("setup: chr2:150 should have only S1, got %v", got)
 	}
 
-	out := runVcf(t, "refblock-attach", "--append", base, frags[0], frags[1])
+	out := runVcf(t, "gvcf-attach", "--append", base, frags[0], frags[1])
 	if !strings.Contains(out, "skipping 1 sample(s) already attached: S1") ||
 		!strings.Contains(out, "appending 1 sample(s)") {
 		t.Errorf("--append over a partial attach:\n%s", out)

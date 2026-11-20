@@ -23,9 +23,9 @@ var (
 	vcfRefBlocksForce       bool
 )
 
-var refBlockCalcCmd = &cobra.Command{
+var gvcfExtractCmd = &cobra.Command{
 	Annotations: map[string]string{"since": "v0.1.0"},
-	Use:         "refblock-calc <sample.g.vcf.gz>",
+	Use:         "gvcf-extract <sample.g.vcf.gz>",
 	Short:       "Extract one sample's reference blocks from a gVCF, for a gtstore",
 	Long: `Read one sample's gVCF and write its reference blocks as a FRAGMENT: the
 positive coverage claims a store's ref_blocks table is built from.
@@ -37,9 +37,9 @@ how that is captured. Genotypes still come from the pVCF; a fragment holds no
 ALT calls, only spans where the sample was observed to be reference.
 
 Run it once per sample, independently -- it is single-sample and streaming, and
-the fragments are merged into a store afterwards (gtstore refblock-attach).
+the fragments are merged into a store afterwards (gtstore gvcf-attach).
 
-  gtstore refblock-calc S0001.g.vcf.gz --roster cohort/ --out frags/S0001
+  gtstore gvcf-extract S0001.g.vcf.gz --roster cohort/ --out frags/S0001
 
 What is kept:
 
@@ -315,7 +315,7 @@ func extractRefBlocks(r *vcf.VcfReader, sample string, fw *gtstore.FragmentWrite
 }
 
 func init() {
-	f := refBlockCalcCmd.Flags()
+	f := gvcfExtractCmd.Flags()
 	f.StringVar(&vcfRefBlocksOut, "out", "", "Fragment directory, created if needed")
 	f.StringVar(&vcfRefBlocksRoster, "roster", "", "The store the fragment will be attached to")
 	f.IntVar(&vcfRefBlocksMinDP, "min-dp", 10, "Drop blocks below this depth (default: the store's)")

@@ -95,7 +95,7 @@ func fragmentSpans(t *testing.T, dir string) (*gtstore.FragmentMeta, []string) {
 func TestRefBlocksCoarsensAGvcf(t *testing.T) {
 	roster, gvcf := refBlocksFixture(t, "S1")
 	out := filepath.Join(t.TempDir(), "S1.frag")
-	runVcf(t, "refblock-calc", "--roster", roster, "--out", out, gvcf)
+	runVcf(t, "gvcf-extract", "--roster", roster, "--out", out, gvcf)
 
 	m, spans := fragmentSpans(t, out)
 	want := []string{
@@ -119,7 +119,7 @@ func TestRefBlocksCoarsensAGvcf(t *testing.T) {
 func TestRefBlocksPassthroughKeepsSourceBlocks(t *testing.T) {
 	roster, gvcf := refBlocksFixture(t, "S1")
 	out := filepath.Join(t.TempDir(), "S1.frag")
-	runVcf(t, "refblock-calc", "--roster", roster, "--out", out, "--passthrough", gvcf)
+	runVcf(t, "gvcf-extract", "--roster", roster, "--out", out, "--passthrough", gvcf)
 	_, spans := fragmentSpans(t, out)
 	// Every source block above the gate, unmerged: 9 blocks less the 3x one.
 	if len(spans) != 8 {
@@ -131,34 +131,34 @@ func TestRefBlocksRefusals(t *testing.T) {
 	roster, gvcf := refBlocksFixture(t, "S1")
 
 	_, offRoster := refBlocksFixture(t, "S9")
-	if err := runVcfErr(t, "refblock-calc", "--roster", roster,
+	if err := runVcfErr(t, "gvcf-extract", "--roster", roster,
 		"--out", filepath.Join(t.TempDir(), "x"), offRoster); err == nil ||
 		!strings.Contains(err.Error(), "not among") {
 		t.Errorf("a sample off the roster: err = %v", err)
 	}
 
-	if err := runVcfErr(t, "refblock-calc", "--roster", roster, "--min-dp", "20",
+	if err := runVcfErr(t, "gvcf-extract", "--roster", roster, "--min-dp", "20",
 		"--out", filepath.Join(t.TempDir(), "x"), gvcf); err == nil ||
 		!strings.Contains(err.Error(), "disagrees") {
 		t.Errorf("a --min-dp the store was not built at: err = %v", err)
 	}
 
-	if err := runVcfErr(t, "refblock-calc", "--roster", roster, "--depth-bands", "10,30",
+	if err := runVcfErr(t, "gvcf-extract", "--roster", roster, "--depth-bands", "10,30",
 		"--out", filepath.Join(t.TempDir(), "x"), gvcf); err == nil ||
 		!strings.Contains(err.Error(), "disagree") {
 		t.Errorf("bands the store was not built with: err = %v", err)
 	}
 
-	if err := runVcfErr(t, "refblock-calc", "--roster", gvcf,
+	if err := runVcfErr(t, "gvcf-extract", "--roster", gvcf,
 		"--out", filepath.Join(t.TempDir(), "x"), gvcf); err == nil {
 		t.Error("a VCF accepted as the roster store")
 	}
 
 	out := filepath.Join(t.TempDir(), "S1.frag")
-	runVcf(t, "refblock-calc", "--roster", roster, "--out", out, gvcf)
-	if err := runVcfErr(t, "refblock-calc", "--roster", roster, "--out", out, gvcf); err == nil ||
+	runVcf(t, "gvcf-extract", "--roster", roster, "--out", out, gvcf)
+	if err := runVcfErr(t, "gvcf-extract", "--roster", roster, "--out", out, gvcf); err == nil ||
 		!strings.Contains(err.Error(), "--force") {
 		t.Errorf("rewriting a finished fragment without --force: err = %v", err)
 	}
-	runVcf(t, "refblock-calc", "--roster", roster, "--out", out, "--force", gvcf)
+	runVcf(t, "gvcf-extract", "--roster", roster, "--out", out, "--force", gvcf)
 }

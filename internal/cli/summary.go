@@ -481,7 +481,7 @@ func describeUnreadableStore(ctx context.Context, path string, openErr error) (s
 func refBlockCoverage(attached []string, known bool, roster []string) string {
 	if !known {
 		return "from samples not recorded (attached before the list was kept); " +
-			"rerun refblock-attach --rebuild to record them"
+			"rerun gvcf-attach --rebuild to record them"
 	}
 	if len(attached) == len(roster) {
 		return fmt.Sprintf("from all %s samples", comma(int64(len(roster))))
@@ -539,5 +539,5 @@ func gapWarning(maxGap int32) string {
 	}
 	return fmt.Sprintf(" -- WARNING: merged across gaps of up to %d bp by an older version, so a "+
 		"position in such a gap can read 0/0 without having been assayed; rebuild with "+
-		"refblock-calc and refblock-attach --rebuild", maxGap)
+		"gvcf-extract and gvcf-attach --rebuild", maxGap)
 }

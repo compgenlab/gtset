@@ -31,14 +31,14 @@ gtstore convert --out cohort/chr1 chr1.vcf.gz
 gtstore convert --out cohort/chr2 chr2.vcf.gz
 
 # 2. Combine the volumes into one store
-gtstore create cohort/
+gtstore bind cohort/
 
 # 3. (optional) Reference blocks from each sample's gVCF -- one job per sample
-gtstore refblock-calc --roster cohort --out frags/S0001 S0001.g.vcf.gz
+gtstore gvcf-extract --roster cohort --out frags/S0001 S0001.g.vcf.gz
 
 # 4. (optional) Attach them; rerun with --append as more gVCFs arrive,
 #    and --replace S0001 swaps in a redone sample
-gtstore refblock-attach --append cohort/ frags/
+gtstore gvcf-attach --append cohort/ frags/
 
 # 5. Query: sites, samples, or both
 gtstore query cohort --variant chr1:1000:A:T
@@ -57,9 +57,9 @@ from anywhere on the command line.
 | Command | Description |
 |---------|-------------|
 | `convert` | Convert one or more VCFs into a store volume ([format docs](docs/convert.md)) |
-| `create` | Combine volumes, disjoint by chromosome, into one store |
-| `refblock-calc` | Extract one sample's gVCF reference blocks into a fragment |
-| `refblock-attach` | Merge fragments into a store's `ref_blocks` table |
+| `bind` | Bind volumes, disjoint by chromosome, into one store |
+| `gvcf-extract` | Extract one sample's gVCF reference blocks into a fragment |
+| `gvcf-attach` | Merge fragments into a store's `ref_blocks` table |
 | `query` | Query genotypes by site, by sample, or both, from a store or a VCF |
 | `summary` | Describe a store or VCF: samples, contigs, provenance, census |
 
