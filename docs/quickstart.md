@@ -131,8 +131,8 @@ the cohort VCF. You can add gVCFs in batches, as they arrive.
 ### 4. Extract each sample's reference blocks into a fragment
 
 ```bash
-gtstore refblock-calc gvcf/S0001.g.vcf.gz --roster cohort --out frags/S0001
-gtstore refblock-calc gvcf/S0002.g.vcf.gz --roster cohort --out frags/S0002
+gtstore gvcf-extract gvcf/S0001.g.vcf.gz --roster cohort --out frags/S0001
+gtstore gvcf-extract gvcf/S0002.g.vcf.gz --roster cohort --out frags/S0002
 # ... one job per sample, in parallel
 ```
 
@@ -150,7 +150,7 @@ nobody looked. A finished fragment is kept on a rerun unless `--force`.
 ### 5. Attach the fragments to the store
 
 ```bash
-gtstore refblock-attach cohort/ frags/
+gtstore gvcf-attach cohort/ frags/
 ```
 
 `frags/` is a directory of fragments; you can also name fragments one by one,
@@ -168,9 +168,9 @@ Once a store has blocks, an attach must say what it is doing. To add samples
 as their gVCFs arrive, use `--append` with the same fragment directory:
 
 ```bash
-gtstore refblock-calc gvcf/S0011.g.vcf.gz --roster cohort --out frags/S0011
+gtstore gvcf-extract gvcf/S0011.g.vcf.gz --roster cohort --out frags/S0011
 # ... S0012 to S0020
-gtstore refblock-attach --append cohort/ frags/
+gtstore gvcf-attach --append cohort/ frags/
 ```
 
 `--append` attaches only the samples not in the store yet and skips fragments
@@ -183,7 +183,7 @@ To redo a sample already attached (its gVCF changed), name it with
 `--replace`, which swaps in the new fragment and keeps everyone else:
 
 ```bash
-gtstore refblock-attach cohort/ frags/S0003 --replace S0003
+gtstore gvcf-attach cohort/ frags/S0003 --replace S0003
 ```
 
 To rebuild the whole table from fragments instead, pass every fragment with

@@ -7,8 +7,8 @@ import "github.com/spf13/cobra"
 func InitCmd(rootCmd *cobra.Command) {
 	rootCmd.AddCommand(convertCmd)
 	rootCmd.AddCommand(createCmd)
-	rootCmd.AddCommand(refBlockCalcCmd)
-	rootCmd.AddCommand(refBlockAttachCmd)
+	rootCmd.AddCommand(gvcfExtractCmd)
+	rootCmd.AddCommand(gvcfAttachCmd)
 	rootCmd.AddCommand(queryCmd)
 	rootCmd.AddCommand(summaryCmd)
 }

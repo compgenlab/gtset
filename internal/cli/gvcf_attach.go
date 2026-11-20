@@ -24,23 +24,23 @@ var (
 	attachTempDir string
 )
 
-var refBlockAttachCmd = &cobra.Command{
+var gvcfAttachCmd = &cobra.Command{
 	Annotations: map[string]string{"since": "v0.1.0"},
-	Use:         "refblock-attach <store> [fragment ...]",
+	Use:         "gvcf-attach <store> [fragment ...]",
 	Short:       "Merge reference-block fragments into a store's ref_blocks",
-	Long: `Merge the per-sample fragments gtstore refblock-calc wrote into a store's ref_blocks
+	Long: `Merge the per-sample fragments gtstore gvcf-extract wrote into a store's ref_blocks
 table, so the store answers at positions off its catalog.
 
-  gtstore refblock-attach cohort/ frags/
-  gtstore refblock-attach cohort/ --from fragments.txt
-  gtstore refblock-attach cohort/ frags/ --append
-  gtstore refblock-attach cohort/ frags/S0042 --replace S0042
+  gtstore gvcf-attach cohort/ frags/
+  gtstore gvcf-attach cohort/ --from fragments.txt
+  gtstore gvcf-attach cohort/ frags/ --append
+  gtstore gvcf-attach cohort/ frags/S0042 --replace S0042
 
 A fragment argument is a fragment directory, or a local directory whose
 subdirectories are fragments; --from reads one per line, for when there are
 too many for a command line. Every fragment must be finished, one per sample,
 for a sample on the store's roster, and built with the store's --min-dp and
-depth bands. A fragment from an older refblock-calc that merged across gaps is
+depth bands. A fragment from an older gvcf-extract that merged across gaps is
 refused, since its blocks may claim bases that were never assayed.
 
 Every chromosome a fragment has blocks on becomes answerable. A store routes a
@@ -300,7 +300,7 @@ func hasFragmentMeta(dir string) bool {
 }
 
 func init() {
-	f := refBlockAttachCmd.Flags()
+	f := gvcfAttachCmd.Flags()
 	f.BoolVar(&attachRebuild, "rebuild", false, "Rebuild ref_blocks from these fragments alone")
 	f.BoolVar(&attachAppend, "append", false, "Add samples not attached yet; skip fragments for samples already attached")
 	f.StringSliceVar(&attachReplace, "replace", nil, "Samples to replace in the existing ref_blocks")

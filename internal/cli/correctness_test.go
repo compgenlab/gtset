@@ -10,7 +10,7 @@ import (
 // proceeds with a help page as its input.
 func TestNoArgsIsAUsageErrorNotHelpOnStdout(t *testing.T) {
 	for _, cmd := range []string{
-		"convert", "create", "refblock-calc", "refblock-attach", "query", "summary",
+		"convert", "create", "gvcf-extract", "gvcf-attach", "query", "summary",
 	} {
 		root, buf := vcfTestRoot(cmd)
 		err := root.Execute()

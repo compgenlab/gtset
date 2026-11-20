@@ -11,8 +11,8 @@ import (
 func TestQueryNoRefBlocks(t *testing.T) {
 	roster, s1 := refBlocksFixture(t, "S1")
 	frag := filepath.Join(t.TempDir(), "S1")
-	runVcf(t, "refblock-calc", "--roster", roster, "--out", frag, s1)
-	runVcf(t, "refblock-attach", roster, frag)
+	runVcf(t, "gvcf-extract", "--roster", roster, "--out", frag, s1)
+	runVcf(t, "gvcf-attach", roster, frag)
 
 	const off = "chr1:150:C:T" // between catalog sites, inside S1's block
 	if got := homRefSamplesAt(t, roster, off); len(got) == 0 {
