@@ -27,7 +27,7 @@ var rootCmd = &cobra.Command{
 answers genotype queries against a store or a VCF alike.
 
   gtstore convert        --out cohort/chr1 chr1.vcf.gz      VCF -> volume
-  gtstore create         cohort/                            volumes -> gtstore
+  gtstore bind           cohort/                            volumes -> gtstore
   gtstore gvcf-extract   --roster cohort --out frags/S1 S1.g.vcf.gz
   gtstore gvcf-attach    cohort/ frags/                     gVCF blocks -> store
   gtstore query          cohort --variant chr1:1000:A:T     genotypes

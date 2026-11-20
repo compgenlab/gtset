@@ -195,7 +195,7 @@ func TestVarsummaryNamesSamplesWithoutRefBlocksOnAnArchive(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "cohort")
 	runVcf(t, "convert", "--out", filepath.Join(base, "chr1"), "testdata/multi_chr1.vcf")
 	runVcf(t, "convert", "--out", filepath.Join(base, "chr2"), "testdata/multi_chr2.vcf")
-	runVcf(t, "create", base)
+	runVcf(t, "bind", base)
 
 	_, s1 := refBlocksFixture(t, "S1")
 	frag := filepath.Join(t.TempDir(), "S1")

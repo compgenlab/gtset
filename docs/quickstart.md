@@ -83,11 +83,12 @@ the size of the file.
 ### 2. Combine the volumes into one store
 
 ```bash
-gtstore create cohort/
+gtstore bind cohort/
 gtstore summary cohort
 ```
 
-`create` writes `cohort/gtstore.json.gz` over every volume it finds there.
+`bind` writes `cohort/gtstore.json.gz` over every volume it finds there; no
+genotype is read or rewritten, so it takes seconds.
 It refuses volumes that disagree on samples (or their order), `--min-dp` or
 depth bands, or that share a chromosome. `summary` reads only manifests, so it
 is instant; check that every chromosome is there.

@@ -6,7 +6,7 @@ import "github.com/spf13/cobra"
 // order in --help, which follows the pipeline: build, extend, read.
 func InitCmd(rootCmd *cobra.Command) {
 	rootCmd.AddCommand(convertCmd)
-	rootCmd.AddCommand(createCmd)
+	rootCmd.AddCommand(bindCmd)
 	rootCmd.AddCommand(gvcfExtractCmd)
 	rootCmd.AddCommand(gvcfAttachCmd)
 	rootCmd.AddCommand(queryCmd)

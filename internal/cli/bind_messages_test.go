@@ -31,7 +31,7 @@ func TestCreateReportsVolumes(t *testing.T) {
 	// And something that was never a volume.
 	os.MkdirAll(filepath.Join(store, "logs"), 0o755)
 
-	out := runVcf(t, "create", "-v", store)
+	out := runVcf(t, "bind", "-v", store)
 	for _, want := range []string{
 		"skipping chr3: no manifest.json.gz -- a conversion that is still running or did not finish",
 		"skipping logs: not a volume",
@@ -47,7 +47,7 @@ func TestCreateReportsVolumes(t *testing.T) {
 	}
 
 	// Naming an unfinished volume is an error that names it.
-	if err := runVcfErr(t, "create", store, "chr1", "chr3"); err == nil || !strings.Contains(err.Error(), "volume chr3") {
+	if err := runVcfErr(t, "bind", store, "chr1", "chr3"); err == nil || !strings.Contains(err.Error(), "volume chr3") {
 		t.Errorf("unfinished named volume: %v", err)
 	}
 }

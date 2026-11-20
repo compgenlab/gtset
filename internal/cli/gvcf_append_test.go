@@ -68,7 +68,7 @@ func TestAttachAppendOnAnArchiveFinishesAPartialAttach(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "cohort")
 	runVcf(t, "convert", "--out", filepath.Join(base, "chr1"), "testdata/multi_chr1.vcf")
 	runVcf(t, "convert", "--out", filepath.Join(base, "chr2"), "testdata/multi_chr2.vcf")
-	runVcf(t, "create", base)
+	runVcf(t, "bind", base)
 	frags := fragmentsFor(t, base, "S1", "S2")
 
 	runVcf(t, "gvcf-attach", "--append", base, frags[0])

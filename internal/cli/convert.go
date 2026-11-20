@@ -170,7 +170,7 @@ written today, behind an interface this package owns, and the design keeps room
 for another backend -- so naming the command after the format would be a promise
 about something deliberately left changeable. What this writes is one VOLUME;
 several volumes, disjoint by chromosome, then form a single gtstore queried as
-one -- see gtstore create.
+one -- see gtstore bind.
 
 The store is written to --out, and its tables form one inseparable set:
 
