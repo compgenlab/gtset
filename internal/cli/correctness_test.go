@@ -6,7 +6,7 @@ import (
 )
 
 // A command given no arguments must not write its help page into a redirected
-// stdout and exit 0 -- "pendium-gt query > out.tsv && next-step out.tsv" then
+// stdout and exit 0 -- "gtset query > out.tsv && next-step out.tsv" then
 // proceeds with a help page as its input.
 func TestNoArgsIsAUsageErrorNotHelpOnStdout(t *testing.T) {
 	for _, cmd := range []string{

@@ -26,7 +26,7 @@ import (
 // chain-valued flags, mostly -- still have to clear those by hand afterwards.
 //
 // It walks the whole tree, not only root's children: a subcommand of a
-// subcommand -- pendium-gt attach -- shares its flag objects across
+// subcommand -- gtset attach -- shares its flag objects across
 // runs exactly as a top-level command does, and a --rebuild left set by one
 // test changed what the next one meant.
 func ResetFlags(root *cobra.Command) {
@@ -72,7 +72,7 @@ func ResetFlags(root *cobra.Command) {
 // package-level cobra.Command values, so ResetFlags is what actually isolates
 // one test from the next. See its doc.
 func NewRoot(init func(*cobra.Command), args ...string) (*cobra.Command, *bytes.Buffer) {
-	root := &cobra.Command{Use: "pendium-gt"}
+	root := &cobra.Command{Use: "gtset"}
 	init(root)
 	ResetFlags(root)
 	var buf bytes.Buffer

@@ -68,63 +68,63 @@ jobs:
       - name: Build binaries
         env:
           LDFLAGS: >-
-            -X 'github.com/compgenlab/pendium/internal/cli.Version=${{ steps.version.outputs.version }}'
-            -X 'github.com/compgenlab/pendium/internal/cli.GitHash=${{ steps.version.outputs.git_hash }}'
+            -X 'github.com/compgenlab/gtset/internal/cli.Version=${{ steps.version.outputs.version }}'
+            -X 'github.com/compgenlab/gtset/internal/cli.GitHash=${{ steps.version.outputs.git_hash }}'
         run: |
           mkdir -p bin
-          GOOS=darwin  GOARCH=arm64                go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/pendium-gt.darwin_arm64 ./cmd/pendium-gt
-          GOOS=darwin  GOARCH=amd64                go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/pendium-gt.darwin_amd64 ./cmd/pendium-gt
-          GOOS=linux   GOARCH=arm64 CGO_ENABLED=0  go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/pendium-gt.linux_arm64 ./cmd/pendium-gt
-          GOOS=linux   GOARCH=amd64 CGO_ENABLED=0  go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/pendium-gt.linux_amd64 ./cmd/pendium-gt
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0  go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/pendium-gt.windows_amd64.exe ./cmd/pendium-gt
+          GOOS=darwin  GOARCH=arm64                go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/gtset.darwin_arm64 ./cmd/gtset
+          GOOS=darwin  GOARCH=amd64                go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/gtset.darwin_amd64 ./cmd/gtset
+          GOOS=linux   GOARCH=arm64 CGO_ENABLED=0  go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/gtset.linux_arm64 ./cmd/gtset
+          GOOS=linux   GOARCH=amd64 CGO_ENABLED=0  go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/gtset.linux_amd64 ./cmd/gtset
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0  go build -buildvcs=false -ldflags "$LDFLAGS" -o bin/gtset.windows_amd64.exe ./cmd/gtset
 
-      - name: Upload pendium-gt.darwin_arm64
+      - name: Upload gtset.darwin_arm64
         uses: actions/upload-artifact@v7
         with:
-          name: pendium-gt.darwin_arm64
-          path: bin/pendium-gt.darwin_arm64
+          name: gtset.darwin_arm64
+          path: bin/gtset.darwin_arm64
 
-      - name: Upload pendium-gt.darwin_amd64
+      - name: Upload gtset.darwin_amd64
         uses: actions/upload-artifact@v7
         with:
-          name: pendium-gt.darwin_amd64
-          path: bin/pendium-gt.darwin_amd64
+          name: gtset.darwin_amd64
+          path: bin/gtset.darwin_amd64
 
-      - name: Upload pendium-gt.linux_arm64
+      - name: Upload gtset.linux_arm64
         uses: actions/upload-artifact@v7
         with:
-          name: pendium-gt.linux_arm64
-          path: bin/pendium-gt.linux_arm64
+          name: gtset.linux_arm64
+          path: bin/gtset.linux_arm64
 
-      - name: Upload pendium-gt.linux_amd64
+      - name: Upload gtset.linux_amd64
         uses: actions/upload-artifact@v7
         with:
-          name: pendium-gt.linux_amd64
-          path: bin/pendium-gt.linux_amd64
+          name: gtset.linux_amd64
+          path: bin/gtset.linux_amd64
 
-      - name: Upload pendium-gt.windows_amd64
+      - name: Upload gtset.windows_amd64
         uses: actions/upload-artifact@v7
         with:
-          name: pendium-gt.windows_amd64.exe
-          path: bin/pendium-gt.windows_amd64.exe
+          name: gtset.windows_amd64.exe
+          path: bin/gtset.windows_amd64.exe
 
       - name: Create source archive
         run: |
           VERSION=${{ steps.version.outputs.version }}
           mkdir -p dist
-          git archive --format=zip --prefix=pendium-${VERSION}/ HEAD > dist/pendium-${VERSION}-src.zip
+          git archive --format=zip --prefix=gtset-${VERSION}/ HEAD > dist/gtset-${VERSION}-src.zip
 
       - name: Create tagged release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            bin/pendium-gt.darwin_arm64
-            bin/pendium-gt.darwin_amd64
-            bin/pendium-gt.linux_arm64
-            bin/pendium-gt.linux_amd64
-            bin/pendium-gt.windows_amd64.exe
-            dist/pendium-*-src.zip
+            bin/gtset.darwin_arm64
+            bin/gtset.darwin_amd64
+            bin/gtset.linux_arm64
+            bin/gtset.linux_amd64
+            bin/gtset.windows_amd64.exe
+            dist/gtset-*-src.zip
 
       - name: Create dev release
         if: github.ref == 'refs/heads/main'
@@ -140,9 +140,9 @@ jobs:
             **Commit:** ${{ github.sha }}
             **Version:** ${{ steps.version.outputs.version }}
           files: |
-            bin/pendium-gt.darwin_arm64
-            bin/pendium-gt.darwin_amd64
-            bin/pendium-gt.linux_arm64
-            bin/pendium-gt.linux_amd64
-            bin/pendium-gt.windows_amd64.exe
-            dist/pendium-*-src.zip
+            bin/gtset.darwin_arm64
+            bin/gtset.darwin_amd64
+            bin/gtset.linux_arm64
+            bin/gtset.linux_amd64
+            bin/gtset.windows_amd64.exe
+            dist/gtset-*-src.zip

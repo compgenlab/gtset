@@ -136,7 +136,7 @@ func TestSampleFileFromLocator(t *testing.T) {
 // A remote input is read, a remote output is refused, and the refusal names the
 // flag and says "local" rather than failing deep inside a writer.
 //
-// pendium-gt convert is NOT in this list any more: a store is written through a sink
+// gtset convert is NOT in this list any more: a store is written through a sink
 // and may go to an object store, which is what TestStoreOutMayBeRemote covers.
 // The commands here write a single stream and still have nowhere remote to put
 // it.
@@ -196,7 +196,7 @@ func TestStoreQueryOverHTTP(t *testing.T) {
 	}
 }
 
-// stripQueryProvenance drops pendium-gt query's "## " banner, which echoes the input
+// stripQueryProvenance drops gtset query's "## " banner, which echoes the input
 // path and so differs by construction between a local and a remote read. The
 // existing stripProvenance strips VCF header lines, which is a different set.
 func stripQueryProvenance(s string) string {

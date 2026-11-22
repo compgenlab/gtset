@@ -16,7 +16,7 @@ import (
 	// scheme rather than written.
 	_ "github.com/compgenlab/cghts/gtstore/sinks3"
 	"github.com/compgenlab/cghts/vcf"
-	"github.com/compgenlab/pendium/internal/buildinfo"
+	"github.com/compgenlab/gtset/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -144,7 +144,7 @@ func collectMeta() (map[string]string, error) {
 var convertCmd = &cobra.Command{
 	Annotations: map[string]string{"since": "v0.1.0"},
 	Use:         "convert <input.vcf> [input2.vcf ...]",
-	Short:       "Convert a VCF to a pendium",
+	Short:       "Convert a VCF to a gtset",
 	Long: `Convert a VCF into a VARSTORE: a columnar genotype store that keeps only the
 alternate-allele calls, along with enough context to still tell a
 confidently-called reference apart from a position that was never assayed.
@@ -165,12 +165,12 @@ position statistics stay tighter, and a locus lookup then skips more of the
 file. Measured on a two-chromosome store, supplying them out of order cost
 about 1.8x on a locus query (166ms against 298ms).
 
-The name is the STORE rather than its encoding. Parquet is how a pendium is
+The name is the STORE rather than its encoding. Parquet is how a gtset is
 written today, behind an interface this package owns, and the design keeps room
 for another backend -- so naming the command after the format would be a promise
 about something deliberately left changeable. What this writes is one VOLUME;
-several volumes, disjoint by chromosome, then form a single pendium queried as
-one -- see pendium-gt bind.
+several volumes, disjoint by chromosome, then form a single gtset queried as
+one -- see gtset bind.
 
 The store is written to --out, and its tables form one inseparable set:
 
@@ -184,7 +184,7 @@ A store is a directory, created if needed; a trailing "/" on --out is optional
 and means nothing. The tables are only meaningful together, so this keeps the
 set as one thing to copy, move or delete, and it is the layout every Parquet
 tool expects -- DuckDB or pyarrow can be pointed straight at a table.
-pendium-gt query accepts the directory, with or without the slash, or any table
+gtset query accepts the directory, with or without the slash, or any table
 path within it.
 
 The manifest is what makes a store readable rather than merely present. It is
@@ -195,7 +195,7 @@ much of the input went into them, and a store that covered three of twenty-two
 chromosomes answers "not assayed" for the rest, exactly as a complete store
 answers for a position the source never reported. So the manifest also records
 what was written: per-chromosome site and call counts, per-table row counts,
-the sample roster. Read it with pendium-gt summary.
+the sample roster. Read it with gtset summary.
 
 A store written by an older converter has no manifest and must be re-converted.
 
@@ -268,7 +268,7 @@ could answer off-catalog positions.
 Catalog runs are broken wherever a sample's depth crosses a band boundary, so
 each run's min_dp bounds the whole of it. A store keeps only that floor, not
 the depth at each site, so the boundaries decide which query gates are exact:
-pendium-gt query --hom-ref at a --min-dp on a boundary (or at or below the
+gtset query --hom-ref at a --min-dp on a boundary (or at or below the
 conversion --min-dp) returns exactly the reference calls the source VCF would,
 and a gate inside a band returns a subset of them -- never a reference call the
 source lacks. By default the boundaries are geometric, min-dp x 1.5^k
@@ -335,11 +335,11 @@ mean something else.
   --meta-description TEXT   free text
   --meta KEY=VALUE          anything else (repeatable)
 
-Values are recorded verbatim -- pendium-gt cannot know whether "GRCh38" is true, and
+Values are recorded verbatim -- gtset cannot know whether "GRCh38" is true, and
 normalizing it would turn your claim into its own. Keys are lowercase
 [a-z0-9_-]. A key given twice, by either spelling, is an error rather than
 last-wins: which of two conflicting claims gets recorded should not depend on
-the order the flags were typed. pendium-gt summary prints all of it, and
+the order the flags were typed. gtset summary prints all of it, and
 --format json emits it verbatim for jq.`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/compgenlab/cghts/gtstore"
-	"github.com/compgenlab/pendium/internal/buildinfo"
+	"github.com/compgenlab/gtset/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
-// A pendium: several volumes, disjoint by chromosome, read as one.
+// A gtset: several volumes, disjoint by chromosome, read as one.
 //
 // WHY THIS IS A SEPARATE STEP rather than something a conversion does. A
 // whole-genome callset arrives as one VCF per chromosome and is converted one
@@ -22,27 +22,27 @@ import (
 // and it can only be made once they all exist, because making it means checking
 // that they agree.
 //
-// It also means a pendium can be rebuilt, or one volume replaced, without
+// It also means a gtset can be rebuilt, or one volume replaced, without
 // reconverting anything.
 //
-// Note that pendium-gt convert already produces a pendium -- a complete one of a
+// Note that gtset convert already produces a gtset -- a complete one of a
 // single volume. This does not promote anything to a different kind of object;
 // it composes volumes into a larger archive of the same kind.
 
 var bindCmd = &cobra.Command{
 	Annotations: map[string]string{"since": "v0.1.0"},
 	Use:         "bind <store-dir> [volume ...]",
-	Short:       "Bind existing volumes into one pendium",
-	Long: `Bind existing volumes into one pendium: write its manifest over them.
+	Short:       "Bind existing volumes into one gtset",
+	Long: `Bind existing volumes into one gtset: write its manifest over them.
 No genotype is read or rewritten; this checks that the volumes agree and
 records them as one store.
 
-  pendium-gt bind cohort/ chr1 chr2 chr3
-  pendium-gt bind s3://bucket/cohort chr1 chr2
-  pendium-gt bind cohort/
+  gtset bind cohort/ chr1 chr2 chr3
+  gtset bind s3://bucket/cohort chr1 chr2
+  gtset bind cohort/
 
 A volume named without a scheme or a leading slash is relative to the store
-directory, which keeps a pendium one thing to copy, move or delete. Named with
+directory, which keeps a gtset one thing to copy, move or delete. Named with
 a locator, it is used as given, so volumes may live apart when they must.
 
 Given no volumes, every subdirectory of the store that is a readable volume is
@@ -64,18 +64,18 @@ rediscovered on every query:
   no shared chromosome                   otherwise a locus has two answers and
                                          no rule for choosing
 
-A pendium that cannot be built is a better outcome than one that answers with a
+A gtset that cannot be built is a better outcome than one that answers with a
 different population depending on which chromosome you ask about.
 
 The manifest is written LAST and named gtstore.json.gz. Its presence is what
-makes the directory an archive of several volumes, and pendium-gt and anything else
+makes the directory an archive of several volumes, and gtset and anything else
 reading through cghts will then open it as one.
 
-A pendium is several volumes, disjoint by chromosome, read as one.
+A gtset is several volumes, disjoint by chromosome, read as one.
 
 Whole-genome data ships one VCF per chromosome, so converting it gives one
 volume per chromosome -- and twenty-five volumes is the wrong unit to manage,
-register or reason about. A person has one genome; a pendium is one object that
+register or reason about. A person has one genome; a gtset is one object that
 means it.
 
 It is also what makes small shards affordable. A shard index lives in a manifest
@@ -88,8 +88,8 @@ chromosomes it touches.
 
 The words, since two of them used to be one word:
 
-  pendium    the whole archive -- what you hold, name and query
-  volume     one chromosome's worth of it, a complete pendium on its own
+  gtset    the whole archive -- what you hold, name and query
+  volume     one chromosome's worth of it, a complete gtset on its own
   shard      a coordinate range within a volume`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

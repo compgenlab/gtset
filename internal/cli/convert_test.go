@@ -11,7 +11,7 @@ import (
 	"github.com/compgenlab/cghts/gtstore"
 )
 
-// convert runs pendium-gt convert into a temp dir and returns the store base name.
+// convert runs gtset convert into a temp dir and returns the store base name.
 func convert(t *testing.T, input string, extra ...string) string {
 	t.Helper()
 	base := filepath.Join(t.TempDir(), "store")

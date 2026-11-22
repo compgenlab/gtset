@@ -14,7 +14,7 @@ import (
 
 	"github.com/compgenlab/cghts/gtstore"
 	"github.com/compgenlab/cghts/vcf"
-	"github.com/compgenlab/pendium/internal/buildinfo"
+	"github.com/compgenlab/gtset/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -37,14 +37,14 @@ var queryCmd = &cobra.Command{
 	Use:         "query <input.vcf | store-base>",
 	Short:       "Query genotypes by site, by sample, or both",
 	Long: `Query genotypes without caring which format holds them. The input may be
-a VCF (plain or bgzipped) or a Parquet store written by pendium-gt convert. A store
+a VCF (plain or bgzipped) or a Parquet store written by gtset convert. A store
 is a directory, and may be named by it ("cohort" or "cohort/") or by any member
 inside it ("cohort/calls.parquet", "cohort/manifest.json.gz"). The backend is
 inferred from the path; override with --store.
 
-A store must carry the manifest pendium-gt convert writes when a conversion
+A store must carry the manifest gtset convert writes when a conversion
 completes; one written by an older converter, or left behind by a conversion that
-was interrupted, is refused rather than queried. Inspect it with pendium-gt summary.
+was interrupted, is refused rather than queried. Inspect it with gtset summary.
 
 Two independent axes, at least one of which must be given. --variant selects
 sites and --sample selects subjects; they compose rather than exclude.
@@ -357,7 +357,7 @@ func describeStore(cmd *cobra.Command, store gtstore.Store, path string, g gtsto
 		}
 		// Only these two of the recorded metadata keys, because only these two
 		// change how the rows below should be read: which callset this is, and
-		// what the coordinates mean. The rest is catalogue -- pendium-gt summary
+		// what the coordinates mean. The rest is catalogue -- gtset summary
 		// prints all of it.
 		if v := p.Meta[gtstore.MetaKeyDataset]; v != "" {
 			fmt.Fprintf(out, "  dataset     %s\n", v)
@@ -874,15 +874,15 @@ func gtMatrixHeader(names []string, source string, store gtstore.Store, q gtstor
 		}
 	}
 	stampVcfProvenance(h, "query")
-	h.AddLine("##pendium_querySource=" + source)
-	h.AddLine("##pendium_queryNote=AC/AN/AF/NS/nhomalt are recomputed over the samples in " +
+	h.AddLine("##gtset_querySource=" + source)
+	h.AddLine("##gtset_queryNote=AC/AN/AF/NS/nhomalt are recomputed over the samples in " +
 		"this file; AN counts only samples the source can vouch for as called at the depth threshold")
 	if ps, ok := store.(*gtstore.ParquetVolume); ok {
 		p := ps.Provenance()
 		if p.Source != "" {
-			h.AddLine("##pendium_queryStoreSource=" + p.Source)
+			h.AddLine("##gtset_queryStoreSource=" + p.Source)
 		}
-		h.AddLine("##pendium_queryNote=0/0 genotypes recovered from a store carry no " +
+		h.AddLine("##gtset_queryNote=0/0 genotypes recovered from a store carry no " +
 			"DP/AD/GQ; only the fact that the call was made survives conversion")
 	}
 	return h, nil

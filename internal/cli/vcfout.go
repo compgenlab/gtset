@@ -7,7 +7,7 @@ import (
 
 	"github.com/compgenlab/cghts/htsio/tabix"
 	"github.com/compgenlab/cghts/vcf"
-	"github.com/compgenlab/pendium/internal/locator"
+	"github.com/compgenlab/gtset/internal/locator"
 	"github.com/spf13/cobra"
 )
 

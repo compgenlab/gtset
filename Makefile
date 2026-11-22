@@ -12,8 +12,8 @@ GIT_HASH ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 # you need that: make build LDFLAGS_STRIP=
 LDFLAGS_STRIP ?= -s -w
 LDFLAGS := $(LDFLAGS_STRIP) \
-           -X 'github.com/compgenlab/pendium/internal/cli.Version=$(VERSION)' \
-           -X 'github.com/compgenlab/pendium/internal/cli.GitHash=$(GIT_HASH)'
+           -X 'github.com/compgenlab/gtset/internal/cli.Version=$(VERSION)' \
+           -X 'github.com/compgenlab/gtset/internal/cli.GitHash=$(GIT_HASH)'
 
 # Local builds resolve the github.com/compgenlab/cghts dependency via the
 # sibling go.work workspace; release builds (no go.work present) use the
@@ -23,25 +23,25 @@ RELEASE_BRANCH ?= main
 
 .PHONY: build clean test bump-cghts release-check
 
-build: $(BIN_DIR)/pendium-gt.darwin_arm64 $(BIN_DIR)/pendium-gt.darwin_amd64 $(BIN_DIR)/pendium-gt.linux_arm64 $(BIN_DIR)/pendium-gt.linux_amd64 $(BIN_DIR)/pendium-gt.windows_amd64.exe
+build: $(BIN_DIR)/gtset.darwin_arm64 $(BIN_DIR)/gtset.darwin_amd64 $(BIN_DIR)/gtset.linux_arm64 $(BIN_DIR)/gtset.linux_amd64 $(BIN_DIR)/gtset.windows_amd64.exe
 
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
 
-$(BIN_DIR)/pendium-gt.darwin_arm64: $(GO_SOURCES) | $(BIN_DIR)
-	GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags "$(LDFLAGS)" -o $@ ./cmd/pendium-gt
+$(BIN_DIR)/gtset.darwin_arm64: $(GO_SOURCES) | $(BIN_DIR)
+	GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags "$(LDFLAGS)" -o $@ ./cmd/gtset
 
-$(BIN_DIR)/pendium-gt.darwin_amd64: $(GO_SOURCES) | $(BIN_DIR)
-	GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags "$(LDFLAGS)" -o $@ ./cmd/pendium-gt
+$(BIN_DIR)/gtset.darwin_amd64: $(GO_SOURCES) | $(BIN_DIR)
+	GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags "$(LDFLAGS)" -o $@ ./cmd/gtset
 
-$(BIN_DIR)/pendium-gt.linux_arm64: $(GO_SOURCES) | $(BIN_DIR)
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -buildvcs=false -ldflags "$(LDFLAGS)" -o $@ ./cmd/pendium-gt
+$(BIN_DIR)/gtset.linux_arm64: $(GO_SOURCES) | $(BIN_DIR)
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -buildvcs=false -ldflags "$(LDFLAGS)" -o $@ ./cmd/gtset
 
-$(BIN_DIR)/pendium-gt.linux_amd64: $(GO_SOURCES) | $(BIN_DIR)
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -ldflags "$(LDFLAGS)" -o $@ ./cmd/pendium-gt
+$(BIN_DIR)/gtset.linux_amd64: $(GO_SOURCES) | $(BIN_DIR)
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -ldflags "$(LDFLAGS)" -o $@ ./cmd/gtset
 
-$(BIN_DIR)/pendium-gt.windows_amd64.exe: $(GO_SOURCES) | $(BIN_DIR)
-	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -ldflags "$(LDFLAGS)" -o $@ ./cmd/pendium-gt
+$(BIN_DIR)/gtset.windows_amd64.exe: $(GO_SOURCES) | $(BIN_DIR)
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -ldflags "$(LDFLAGS)" -o $@ ./cmd/gtset
 
 clean:
 	rm -rf $(BIN_DIR)

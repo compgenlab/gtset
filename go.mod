@@ -1,4 +1,4 @@
-module github.com/compgenlab/pendium
+module github.com/compgenlab/gtset
 
 go 1.24.9
 
