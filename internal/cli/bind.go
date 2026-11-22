@@ -67,7 +67,7 @@ rediscovered on every query:
 A gtset that cannot be built is a better outcome than one that answers with a
 different population depending on which chromosome you ask about.
 
-The manifest is written LAST and named gtstore.json.gz. Its presence is what
+The manifest is written LAST and named gtset.json.gz. Its presence is what
 makes the directory an archive of several volumes, and gtset and anything else
 reading through cghts will then open it as one.
 

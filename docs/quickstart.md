@@ -87,7 +87,7 @@ gtset bind cohort/
 gtset summary cohort
 ```
 
-`bind` writes `cohort/gtstore.json.gz` over every volume it finds there; no
+`bind` writes `cohort/gtset.json.gz` over every volume it finds there; no
 genotype is read or rewritten, so it takes seconds.
 It refuses volumes that disagree on samples (or their order), `--min-dp` or
 depth bands, or that share a chromosome. `summary` reads only manifests, so it
@@ -226,8 +226,7 @@ A region query never lists off-catalog positions base by base.
 
 ```
 cohort/
-  gtstore.json.gz          the gtset: roster, shared settings, volume list
-                           (the file keeps the project's former name)
+  gtset.json.gz            the gtset: roster, shared settings, volume list
   chr1/
     manifest.json.gz       the volume's completion marker and row counts
     calls.parquet          one row per ALT-carrying genotype

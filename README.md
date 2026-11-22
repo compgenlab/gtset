@@ -13,10 +13,11 @@ per sample, so a store can also answer at positions no variant record mentions.
 
 The format and its query API live in
 [`cghts/gtstore`](https://github.com/compgenlab/cghts); this repo is the CLI.
-The project was called gtstore (and briefly Pendium), and the format kept the
-gtstore name on disk: a
-gtset's top-level marker is `gtstore.json.gz` and its metadata keys are
-`gtstore.*`, so stores written before the rename still open.
+The project was called gtstore (and briefly Pendium). A gtset's top-level marker
+is `gtset.json.gz`; one bound before the rename has `gtstore.json.gz`, which is
+still read and is replaced by the next `bind` or `gvcf-attach`. The Parquet
+metadata keys keep the `gtstore.*` names, so every store written before the
+rename still opens without reconversion.
 General VCF tooling is in [`cgkit`](https://github.com/compgenlab/cgkit).
 
 ## Building

@@ -3,7 +3,7 @@ module github.com/compgenlab/gtset
 go 1.24.9
 
 require (
-	github.com/compgenlab/cghts v0.12.12
+	github.com/compgenlab/cghts v0.12.13-0.20261122024524-11d64af0c9ed
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
 )
