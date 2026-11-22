@@ -18,7 +18,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/compgenlab/pendium/internal/locator"
+	"github.com/compgenlab/gtset/internal/locator"
 	"github.com/spf13/cobra"
 )
 

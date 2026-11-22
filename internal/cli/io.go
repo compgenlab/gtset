@@ -8,18 +8,18 @@ import (
 
 	"github.com/compgenlab/cghts/htsio"
 	"github.com/compgenlab/cghts/vcf"
-	"github.com/compgenlab/pendium/internal/buildinfo"
-	"github.com/compgenlab/pendium/internal/cmdio"
+	"github.com/compgenlab/gtset/internal/buildinfo"
+	"github.com/compgenlab/gtset/internal/cmdio"
 	"github.com/spf13/cobra"
 )
 
-// stampVcfProvenance updates the header's ##fileDate and appends pendium-gt command
+// stampVcfProvenance updates the header's ##fileDate and appends gtset command
 // and version provenance lines, recording how the output file was produced. It
 // is called by any command that writes a VCF file.
 func stampVcfProvenance(h *vcf.VcfHeader, cmdName string) {
 	h.SetFileDate(buildinfo.Date())
-	h.AddLine("##pendium_" + cmdName + "Command=" + buildinfo.CommandLine())
-	h.AddLine("##pendium_" + cmdName + "Version=" + buildinfo.String())
+	h.AddLine("##gtset_" + cmdName + "Command=" + buildinfo.CommandLine())
+	h.AddLine("##gtset_" + cmdName + "Version=" + buildinfo.String())
 }
 
 // openVcfInput opens a streaming VCF reader for filename, reading from stdin

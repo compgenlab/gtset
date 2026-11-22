@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/compgenlab/pendium/internal/buildinfo"
+	"github.com/compgenlab/gtset/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -21,17 +21,17 @@ func versionString() string {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "pendium-gt",
+	Use:   "gtset",
 	Short: "Sparse genotype store for cohort VCFs and gVCFs",
-	Long: `pendium-gt converts cohort VCFs into a sparse, queryable genotype store and
+	Long: `gtset converts cohort VCFs into a sparse, queryable genotype store and
 answers genotype queries against a store or a VCF alike.
 
-  pendium-gt convert       --out cohort/chr1 chr1.vcf.gz     VCF -> volume
-  pendium-gt bind          cohort/                           volumes -> pendium
-  pendium-gt gvcf-extract  --roster cohort --out frags/S1 S1.g.vcf.gz
-  pendium-gt gvcf-attach   cohort/ frags/                    gVCF blocks -> pendium
-  pendium-gt query         cohort --variant chr1:1000:A:T    genotypes
-  pendium-gt summary       cohort                            what a pendium holds`,
+  gtset convert       --out cohort/chr1 chr1.vcf.gz    VCF -> volume
+  gtset bind          cohort/                          volumes -> gtset
+  gtset gvcf-extract  --roster cohort --out frags/S1 S1.g.vcf.gz
+  gtset gvcf-attach   cohort/ frags/                   gVCF blocks -> gtset
+  gtset query         cohort --variant chr1:1000:A:T   genotypes
+  gtset summary       cohort                           what a gtset holds`,
 	// Silence usage only once we reach a command's RunE. Cobra validates args
 	// and flags *before* PersistentPreRun, so parsing errors (e.g. a missing
 	// argument) still print usage, while errors during execution do not.
@@ -59,8 +59,8 @@ func init() {
 {{end}}{{if .Annotations}}{{with (index .Annotations "since")}}Since: {{.}}
 
 {{end}}{{end}}{{if or .Runnable .HasSubCommands}}{{.UsageString}}{{end}}`
-	rootCmd.SetHelpTemplate(helpBody + "\npendium-gt " + versionString() +
-		" https://github.com/compgenlab/pendium\n")
+	rootCmd.SetHelpTemplate(helpBody + "\ngtset " + versionString() +
+		" https://github.com/compgenlab/gtset\n")
 
 	InitCmd(rootCmd)
 }

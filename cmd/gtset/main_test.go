@@ -9,7 +9,7 @@ import (
 // header of every VCF, the @PG CL: of every BAM and gtstore.command in every
 // store. The previous code re-sliced os.Args[1:], which drops the *program
 // name* rather than the flag -- so every record written under --profile was
-// stamped "--profile=cpu.prof summary in.vcf", with no "pendium-gt" in front.
+// stamped "--profile=cpu.prof summary in.vcf", with no "gtset" in front.
 func TestTakeProfileFlag(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -19,46 +19,46 @@ func TestTakeProfileFlag(t *testing.T) {
 	}{
 		{
 			name:     "absent",
-			in:       []string{"pendium-gt", "summary", "in.vcf"},
-			wantArgs: []string{"pendium-gt", "summary", "in.vcf"},
+			in:       []string{"gtset", "summary", "in.vcf"},
+			wantArgs: []string{"gtset", "summary", "in.vcf"},
 		},
 		{
 			name:     "before the subcommand",
-			in:       []string{"pendium-gt", "--profile=cpu.prof", "summary", "in.vcf"},
-			wantArgs: []string{"pendium-gt", "summary", "in.vcf"},
+			in:       []string{"gtset", "--profile=cpu.prof", "summary", "in.vcf"},
+			wantArgs: []string{"gtset", "summary", "in.vcf"},
 			wantPath: "cpu.prof",
 		},
 		{
 			// The order anyone who has used a CLI would reach for. It used to
 			// die with "unknown flag" because only os.Args[1] was examined.
 			name:     "after the subcommand",
-			in:       []string{"pendium-gt", "summary", "--profile=cpu.prof", "in.vcf"},
-			wantArgs: []string{"pendium-gt", "summary", "in.vcf"},
+			in:       []string{"gtset", "summary", "--profile=cpu.prof", "in.vcf"},
+			wantArgs: []string{"gtset", "summary", "in.vcf"},
 			wantPath: "cpu.prof",
 		},
 		{
 			name:     "at the end",
-			in:       []string{"pendium-gt", "summary", "in.vcf", "--profile=cpu.prof"},
-			wantArgs: []string{"pendium-gt", "summary", "in.vcf"},
+			in:       []string{"gtset", "summary", "in.vcf", "--profile=cpu.prof"},
+			wantArgs: []string{"gtset", "summary", "in.vcf"},
 			wantPath: "cpu.prof",
 		},
 		{
 			name:     "empty path is still consumed",
-			in:       []string{"pendium-gt", "--profile=", "summary"},
-			wantArgs: []string{"pendium-gt", "summary"},
+			in:       []string{"gtset", "--profile=", "summary"},
+			wantArgs: []string{"gtset", "summary"},
 			wantPath: "",
 		},
 		{
 			// Everything past a bare "--" is positional by convention.
 			name:     "after a bare double dash",
-			in:       []string{"pendium-gt", "summary", "--", "--profile=cpu.prof"},
-			wantArgs: []string{"pendium-gt", "summary", "--", "--profile=cpu.prof"},
+			in:       []string{"gtset", "summary", "--", "--profile=cpu.prof"},
+			wantArgs: []string{"gtset", "summary", "--", "--profile=cpu.prof"},
 		},
 		{
 			// A filename that merely starts the same way is not the flag.
 			name:     "not a prefix match on a positional",
-			in:       []string{"pendium-gt", "summary", "--profiles=x"},
-			wantArgs: []string{"pendium-gt", "summary", "--profiles=x"},
+			in:       []string{"gtset", "summary", "--profiles=x"},
+			wantArgs: []string{"gtset", "summary", "--profiles=x"},
 		},
 		{
 			// argv[0] is never a flag, however it is spelled.
@@ -68,8 +68,8 @@ func TestTakeProfileFlag(t *testing.T) {
 		},
 		{
 			name:     "only the first is consumed",
-			in:       []string{"pendium-gt", "--profile=a.prof", "summary", "--profile=b.prof"},
-			wantArgs: []string{"pendium-gt", "summary", "--profile=b.prof"},
+			in:       []string{"gtset", "--profile=a.prof", "summary", "--profile=b.prof"},
+			wantArgs: []string{"gtset", "summary", "--profile=b.prof"},
 			wantPath: "a.prof",
 		},
 	}

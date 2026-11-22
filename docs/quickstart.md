@@ -1,8 +1,8 @@
-# Quick start: from a cohort VCF (and, optionally, gVCFs) to a pendium
+# Quick start: from a cohort VCF (and, optionally, gVCFs) to a gtset
 
-This walks through building one pendium from a joint-called cohort VCF, then
+This walks through building one gtset from a joint-called cohort VCF, then
 optionally adding each sample's gVCF reference blocks. Every command here is
-real; `pendium-gt <command> --help` has the full flags, and
+real; `gtset <command> --help` has the full flags, and
 [convert.md](convert.md) is the reference for what a store is and why.
 
 - **Part 1** builds the store from the cohort VCF. That is a complete, usable
@@ -16,7 +16,7 @@ real; `pendium-gt <command> --help` has the full flags, and
 - The joint-called cohort VCF (pVCF), bgzipped. One file per chromosome is
   normal and is what the commands below assume; tabix indexes are recommended.
 - *(Part 2 only)* one gVCF per sample, for samples in the cohort VCF.
-- A `pendium-gt` binary: `make build` writes `bin/pendium-gt.<os>_<arch>`.
+- A `gtset` binary: `make build` writes `bin/gtset.<os>_<arch>`.
 
 ---
 
@@ -26,7 +26,7 @@ real; `pendium-gt <command> --help` has the full flags, and
 
 ```bash
 for c in chr{1..22} chrX chrY; do
-  pendium-gt convert -v --out cohort/$c \
+  gtset convert -v --out cohort/$c \
       --meta-dataset "MyCohort release 3" --meta-reference GRCh38 \
       calls/$c.vcf.gz 2> cohort/$c.log
 done
@@ -83,11 +83,11 @@ the size of the file.
 ### 2. Combine the volumes into one store
 
 ```bash
-pendium-gt bind cohort/
-pendium-gt summary cohort
+gtset bind cohort/
+gtset summary cohort
 ```
 
-`bind` writes `cohort/gtstore.json.gz` over every volume it finds there; no
+`bind` writes `cohort/gtset.json.gz` over every volume it finds there; no
 genotype is read or rewritten, so it takes seconds.
 It refuses volumes that disagree on samples (or their order), `--min-dp` or
 depth bands, or that share a chromosome. `summary` reads only manifests, so it
@@ -97,19 +97,19 @@ is instant; check that every chromosome is there.
 
 ```bash
 # Who carries a variant
-pendium-gt query cohort --variant chr17:43094464:G:A
+gtset query cohort --variant chr17:43094464:G:A
 
 # ...and who is confidently reference (0/0) there
-pendium-gt query cohort --variant chr17:43094464:G:A --hom-ref
+gtset query cohort --variant chr17:43094464:G:A --hom-ref
 
 # What one subject carries in a region
-pendium-gt query cohort --sample S0001 --variant chr17:43000000-43200000
+gtset query cohort --sample S0001 --variant chr17:43000000-43200000
 
 # Many sites at once (VCF, BED or "chrom pos [ref alt]" list): one pass, not one per site
-pendium-gt query cohort --variant panel.bed --sample S0001 --sample S0002
+gtset query cohort --variant panel.bed --sample S0001 --sample S0002
 
 # A genotype matrix as VCF
-pendium-gt query cohort --variant panel.bed --format vcf -o panel.vcf.gz
+gtset query cohort --variant panel.bed --format vcf -o panel.vcf.gz
 ```
 
 Every row has a `ref_source` column. For a `0/0` it says what the reference
@@ -132,8 +132,8 @@ the cohort VCF. You can add gVCFs in batches, as they arrive.
 ### 4. Extract each sample's reference blocks into a fragment
 
 ```bash
-pendium-gt gvcf-extract gvcf/S0001.g.vcf.gz --roster cohort --out frags/S0001
-pendium-gt gvcf-extract gvcf/S0002.g.vcf.gz --roster cohort --out frags/S0002
+gtset gvcf-extract gvcf/S0001.g.vcf.gz --roster cohort --out frags/S0001
+gtset gvcf-extract gvcf/S0002.g.vcf.gz --roster cohort --out frags/S0002
 # ... one job per sample, in parallel
 ```
 
@@ -151,7 +151,7 @@ nobody looked. A finished fragment is kept on a rerun unless `--force`.
 ### 5. Attach the fragments to the store
 
 ```bash
-pendium-gt gvcf-attach cohort/ frags/
+gtset gvcf-attach cohort/ frags/
 ```
 
 `frags/` is a directory of fragments; you can also name fragments one by one,
@@ -169,9 +169,9 @@ Once a store has blocks, an attach must say what it is doing. To add samples
 as their gVCFs arrive, use `--append` with the same fragment directory:
 
 ```bash
-pendium-gt gvcf-extract gvcf/S0011.g.vcf.gz --roster cohort --out frags/S0011
+gtset gvcf-extract gvcf/S0011.g.vcf.gz --roster cohort --out frags/S0011
 # ... S0012 to S0020
-pendium-gt gvcf-attach --append cohort/ frags/
+gtset gvcf-attach --append cohort/ frags/
 ```
 
 `--append` attaches only the samples not in the store yet and skips fragments
@@ -184,7 +184,7 @@ To redo a sample already attached (its gVCF changed), name it with
 `--replace`, which swaps in the new fragment and keeps everyone else:
 
 ```bash
-pendium-gt gvcf-attach cohort/ frags/S0003 --replace S0003
+gtset gvcf-attach cohort/ frags/S0003 --replace S0003
 ```
 
 To rebuild the whole table from fragments instead, pass every fragment with
@@ -197,8 +197,8 @@ time.
 ### 7. Check and query
 
 ```bash
-pendium-gt summary cohort
-pendium-gt query cohort --variant chr1:123456:C:T --hom-ref
+gtset summary cohort
+gtset query cohort --variant chr1:123456:C:T --hom-ref
 ```
 
 `summary` now reports `ref blocks yes` and **whose gVCFs are attached**
@@ -226,8 +226,7 @@ A region query never lists off-catalog positions base by base.
 
 ```
 cohort/
-  gtstore.json.gz          the pendium: roster, shared settings, volume list
-                           (the file keeps the project's former name)
+  gtset.json.gz            the gtset: roster, shared settings, volume list
   chr1/
     manifest.json.gz       the volume's completion marker and row counts
     calls.parquet          one row per ALT-carrying genotype
@@ -245,4 +244,4 @@ frags/                     Part 2 only; keep it if you may --rebuild
 ## See also
 
 - [convert.md](convert.md): the format, its guarantees, and every flag.
-- `pendium-gt <command> --help` for each step.
+- `gtset <command> --help` for each step.

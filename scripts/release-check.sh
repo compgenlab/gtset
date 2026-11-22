@@ -10,7 +10,7 @@
 # it ran against the working tree. The release ships without the fix. That has
 # happened here, in both repositories.
 #
-# Second, and specific to pendium: local builds resolve cghts through a sibling
+# Second, and specific to gtset: local builds resolve cghts through a sibling
 # go.work workspace, while a release resolves the pin in go.mod. Those can differ,
 # so "the tests pass" locally says nothing about whether the released artifact
 # builds. The Makefile deliberately does not set GOWORK=off for ordinary targets;
